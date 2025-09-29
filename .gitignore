@@ -1,0 +1,36 @@
+# ======================
+# PYTHON / DJANGO
+# ======================
+venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+*.log
+
+# Archivos de Django que no necesitas subir
+media/
+staticfiles/
+
+# Migraciones (opcional, puedes versionarlas si quieres)
+# */migrations/*.py
+# !*/migrations/__init__.py
+
+# ======================
+# NODE / REACT
+# ======================
+node_modules/
+build/
+dist/
+*.lock
+
+# ======================
+# SISTEMA OPERATIVO
+# ======================
+.DS_Store
+Thumbs.db
+
+# ======================
+# ENTORNOS Y CONFIG
+# ======================
+.env
+*.env
