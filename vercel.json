@@ -1,0 +1,14 @@
+{
+    "builds": [
+        {
+            "src": "SistemaEsetel_Backend/wsgi.py",
+            "use": "@vercel/python"
+        }
+    ],
+    "routes":[
+        {
+            "src": "/(.*)",
+            "dest": "SistemaEsetel_Backend/wsgi.py"
+        }
+    ]
+}
