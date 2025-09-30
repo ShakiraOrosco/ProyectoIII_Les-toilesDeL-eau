@@ -1,14 +1,14 @@
 {
     "builds": [
         {
-            "src": "SistemaEsetel_Backend/wsgi.py",
+            "src": "LesEtoiles/wsgi.py",
             "use": "@vercel/python"
         }
     ],
     "routes":[
         {
             "src": "/(.*)",
-            "dest": "SistemaEsetel_Backend/wsgi.py"
+            "dest": "LesEtoiles/wsgi.py"
         }
     ]
 }
