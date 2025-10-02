@@ -1,0 +1,14 @@
+{
+    "builds": [
+        {
+            "src": "LesEtoiles/wsgi.py",
+            "use": "@vercel/python"
+        }
+    ],
+    "routes":[
+        {
+            "src": "/(.*)",
+            "dest": "LesEtoiles/wsgi.py"
+        }
+    ]
+}
