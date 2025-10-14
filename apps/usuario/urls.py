@@ -10,8 +10,8 @@ urlpatterns = [
     # este es para ver quien se ha logueado 
     path('mi-perfil/', mi_perfil, name='mi-perfil'),
     #CRUD de usuarios
-    path('usuarios/crear/', crear_usuario, name='crear_usuario'),
+    path('crear/', crear_usuario, name='crear_usuario'),
     path('', lista_usuarios, name='lista-usuarios'),
-    path('usuarios/<int:id_usuario>/update/', actualizar_usuario, name='actualizar-usuario'),
-    path('usuarios/<int:id_usuario>/delete/', eliminar_usuario, name='eliminar-usuario'),
+    path('<int:id_usuario>/update/', actualizar_usuario, name='actualizar-usuario'),
+    path('<int:id_usuario>/delete/', eliminar_usuario, name='eliminar-usuario'),
 ]

@@ -15,9 +15,10 @@ def crear_habitacion(request):
         usuario = Usuario.objects.get(user=request.user)
     except Usuario.DoesNotExist:
         return Response({'error': 'Usuario no encontrado'}, status=404)
-
+    #===============================================
     # Solo administradores pueden crear habitaciones
-    if usuario.rol.lower() != 'administrador':
+    #===============================================
+    if usuario.rol.lower() != 'Administrador':
         return Response({'error': 'Acceso no autorizado'}, status=403)
 
     serializer = HabitacionSerializer(data=request.data)
