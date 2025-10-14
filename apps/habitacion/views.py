@@ -15,9 +15,10 @@ def crear_habitacion(request):
         usuario = Usuario.objects.get(user=request.user)
     except Usuario.DoesNotExist:
         return Response({'error': 'Usuario no encontrado'}, status=404)
-
+    #===============================================
     # Solo administradores pueden crear habitaciones
-    if usuario.rol.lower() != 'administrador':
+     #===============================================
+    if usuario.rol != 'Administrador':
         return Response({'error': 'Acceso no autorizado'}, status=403)
 
     serializer = HabitacionSerializer(data=request.data)
@@ -57,7 +58,7 @@ def actualizar_habitacion(request, id_habitacion):
     #===============================================
     # Solo administradores pueden actualizar
     #===============================================
-    if usuario.rol.lower() != 'Administrador':
+    if usuario.rol != 'Administrador':
         return Response({'error': 'Acceso no autorizado'}, status=403)
 
     habitacion = get_object_or_404(Habitacion, id_habitacion=id_habitacion)
@@ -80,7 +81,7 @@ def eliminar_habitacion(request, id_habitacion):
     #===============================================
     # Solo administradores pueden eliminar
     #===============================================
-    if usuario.rol.lower() != 'Administrador':
+    if usuario.rol != 'Administrador':
         return Response({'error': 'Acceso no autorizado'}, status=403)
 
     habitacion = get_object_or_404(Habitacion, id_habitacion=id_habitacion)
