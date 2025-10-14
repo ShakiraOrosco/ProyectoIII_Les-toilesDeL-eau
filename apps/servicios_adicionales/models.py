@@ -5,6 +5,7 @@ class ServiciosAdicionales(models.Model):
     nombre = models.CharField(max_length=30)
     descripcion = models.CharField(max_length=100, null=True, blank=True)
     precio = models.DecimalField(max_digits=5, decimal_places=2)
+    tipo = models.CharField(max_length=1)
     estado = models.CharField(max_length=1)
 
     class Meta:
