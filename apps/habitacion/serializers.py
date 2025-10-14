@@ -1,8 +1,8 @@
 from rest_framework import serializers
-from .models import Usuario
+from .models import Habitacion
 
-class UsuarioSerializer(serializers.ModelSerializer):
+class HabitacionSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Usuario
+        model = Habitacion
         fields = '__all__'  # incluye todos los campos del modelo
 

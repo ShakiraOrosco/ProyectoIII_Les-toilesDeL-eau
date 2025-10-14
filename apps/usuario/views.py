@@ -11,14 +11,18 @@ from apps.administrador.models import Administrador
 
 # 🔹 Perfil del usuario autenticado
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([AllowAny])
 def mi_perfil(request):
-    try:
-        usuario = Usuario.objects.get(user=request.user)
-        serializer = UsuarioSerializer(usuario)
-        return Response(serializer.data)
-    except Usuario.DoesNotExist:
+    if not request.user or request.user.is_anonymous:
+        return Response({'mensaje': 'No hay usuario autenticado'}, status=200)
+
+    usuario = Usuario.objects.filter(user=request.user).first()
+    if not usuario:
         return Response({'error': 'No existe un perfil asociado'}, status=404)
+
+    serializer = UsuarioSerializer(usuario)
+    return Response(serializer.data)
+
     
 # 🔹 Crear nuevo usuario (registro público)
 # apps/usuario/views.py
@@ -120,7 +124,7 @@ def lista_usuarios(request):
     except Usuario.DoesNotExist:
         return Response({'error': 'Usuario no encontrado'}, status=404)
 
-    if usuario.rol in ['empleado', 'administrador']:
+    if usuario.rol in ['Empleado', 'Administrador']:
         usuarios = Usuario.objects.all() 
         serializer = UsuarioSerializer(usuarios, many=True)
         return Response(serializer.data)
@@ -138,7 +142,7 @@ def actualizar_usuario(request, id_usuario):
         return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
     # Solo administradores pueden actualizar
-    if usuario.rol.lower() != 'administrador':
+    if usuario.rol.lower() != 'Administrador':
         return Response({'error': 'Acceso no autorizado'}, status=status.HTTP_403_FORBIDDEN)
 
     usuario_obj = get_object_or_404(Usuario, id_usuario=id_usuario)
@@ -165,7 +169,7 @@ def eliminar_usuario(request, id_usuario):
         return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
 
     # Solo administradores pueden eliminar
-    if usuario.rol.lower() != 'administrador':
+    if usuario.rol.lower() != 'Administrador':
         return Response({'error': 'Acceso no autorizado'}, status=status.HTTP_403_FORBIDDEN)
 
     usuario_obj = get_object_or_404(Usuario, id_usuario=id_usuario)
