@@ -7,12 +7,11 @@ urlpatterns = [
     # Autenticación
     path('login/', TokenObtainPairView.as_view(), name='api-login'),
     path('token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-
-    # Endpoints personalizados
+    # este es para ver quien se ha logueado 
     path('mi-perfil/', mi_perfil, name='mi-perfil'),
+    #CRUD de usuarios
     path('usuarios/crear/', crear_usuario, name='crear_usuario'),
-    path('usuarios/', lista_usuarios, name='lista-usuarios'),
-     path('usuarios/<int:id_usuario>/update/', actualizar_usuario, name='actualizar-usuario'),
+    path('', lista_usuarios, name='lista-usuarios'),
+    path('usuarios/<int:id_usuario>/update/', actualizar_usuario, name='actualizar-usuario'),
     path('usuarios/<int:id_usuario>/delete/', eliminar_usuario, name='eliminar-usuario'),
- 
 ]
