@@ -124,7 +124,7 @@ def lista_usuarios(request):
     except Usuario.DoesNotExist:
         return Response({'error': 'Usuario no encontrado'}, status=404)
 
-    if usuario.rol in ['Empleado', 'Administrador']:
+    if usuario.rol in ['empleado', 'administrador']:
         usuarios = Usuario.objects.all() 
         serializer = UsuarioSerializer(usuarios, many=True)
         return Response(serializer.data)
