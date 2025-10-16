@@ -88,7 +88,7 @@ def registrar_reserva_hotel(request):
     # --- 5️⃣ Crear reserva general
     reservas_gen = ReservasGen.objects.create(
         tipo='H',  # H = Hotel
-        pago=b'\x00',  # Valor por defecto
+        pago=None,  # Valor por defecto
         administrador=administrador,
         empleado=empleado
     )
@@ -122,9 +122,9 @@ def registrar_reserva_hotel(request):
 
 
 
-@csrf_exempt
 @api_view(['POST'])
 @permission_classes([AllowAny])
+@csrf_exempt
 def subir_comprobante(request, id_reserva_gen):
     """
     Permite subir un comprobante de pago (archivo binario) asociado a una reserva general.
