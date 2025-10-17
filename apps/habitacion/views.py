@@ -49,6 +49,19 @@ def crear_habitacion(request):
         if not all([numero, piso, amoblado, baño_priv]):
             return Response({'error': 'Faltan datos obligatorios.'}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Convertir piso a int
+        try:
+            piso = int(piso)
+        except (TypeError, ValueError):
+            return Response({'error': 'El campo "piso" debe ser numérico.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Validar duplicado en la base
+        if Habitacion.objects.filter(numero=numero, piso=piso).exists():
+            return Response(
+                {'error': f'Ya existe una habitación con el número {numero} en el piso {piso}.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
         # Buscar la tarifa que coincide con las características
         tarifa = TarifaHotel.objects.filter(amoblado=amoblado, baño_priv=baño_priv).first()
         if not tarifa:
@@ -109,7 +122,7 @@ def detalle_habitacion(request, id_habitacion):
 
 
 # -------------------------------
-# ACTUALIZAR HABITACIÓN (tarifa automática)
+# ACTUALIZAR HABITACIÓN (tarifa automática + validación de número)
 # -------------------------------
 @api_view(['PUT'])
 @permission_classes([AllowAny])
@@ -117,11 +130,25 @@ def actualizar_habitacion(request, id_habitacion):
     try:
         habitacion = Habitacion.objects.get(id_habitacion=id_habitacion)
 
-        habitacion.numero = request.data.get('numero', habitacion.numero)
-        habitacion.piso = request.data.get('piso', habitacion.piso)
-        habitacion.amoblado = request.data.get('amoblado', habitacion.amoblado)
-        habitacion.baño_priv = request.data.get('baño_priv', habitacion.baño_priv)
-        habitacion.estado = request.data.get('estado', habitacion.estado)
+        nuevo_numero = request.data.get('numero', habitacion.numero)
+        nuevo_piso = request.data.get('piso', habitacion.piso)
+        nuevo_amoblado = request.data.get('amoblado', habitacion.amoblado)
+        nuevo_baño_priv = request.data.get('baño_priv', habitacion.baño_priv)
+        nuevo_estado = request.data.get('estado', habitacion.estado)
+
+        # 🔍 Verificar duplicado, ignorando la misma habitación
+        if Habitacion.objects.filter(numero=nuevo_numero).exclude(id_habitacion=id_habitacion).exists():
+            return Response(
+                {'error': f'Ya existe una habitación con el número "{nuevo_numero}".'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Actualizar campos
+        habitacion.numero = nuevo_numero
+        habitacion.piso = nuevo_piso
+        habitacion.amoblado = nuevo_amoblado
+        habitacion.baño_priv = nuevo_baño_priv
+        habitacion.estado = nuevo_estado
 
         # Buscar nueva tarifa si cambian amoblado o baño
         tarifa = TarifaHotel.objects.filter(
@@ -147,7 +174,6 @@ def actualizar_habitacion(request, id_habitacion):
         return Response({'error': 'Habitación no encontrada.'}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
-
 
 # -------------------------------
 # ELIMINAR HABITACIÓN
