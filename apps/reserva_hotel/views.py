@@ -16,6 +16,7 @@ from apps.habitacion.models import Habitacion
 from apps.reservas_gen.models import ReservasGen
 from apps.administrador.models import Administrador
 from apps.empleado.models import Empleado
+from apps.tarifa_hotel.models import TarifaHotel
 
 
 # 🔹 Registrar una reserva de hotel
@@ -149,3 +150,25 @@ def subir_comprobante(request, id_reserva_gen):
         'reserva_gen_id': reserva_gen.id_reservas_gen
     }, status=status.HTTP_200_OK)
 
+
+#-- 🔹 Obtener tarifa de hotel según amoblado y baño privado
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def obtener_tarifa_hotel(request):
+    """
+    Retorna todas las tarifas del hotel.
+    Ejemplo: GET /api/reservaHotel/tarifa/
+    """
+    tarifas = TarifaHotel.objects.all().values(
+        'id_tarifa_hotel',
+        'nombre',
+        'descripcion',
+        'amoblado',
+        'baño_priv',
+        'precio_persona'
+    )
+
+    if not tarifas:
+        return Response({'error': 'No existen tarifas registradas'}, status=status.HTTP_404_NOT_FOUND)
+
+    return Response(list(tarifas), status=status.HTTP_200_OK)

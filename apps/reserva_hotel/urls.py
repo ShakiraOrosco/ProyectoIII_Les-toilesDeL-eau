@@ -7,7 +7,8 @@ from .views import (
     #eliminar_reserva
     subir_comprobante
 )
-from .views import registrar_reserva_hotel
+from .views import registrar_reserva_hotel, obtener_tarifa_hotel 
+
 
 urlpatterns = [
     #path('reservaHotel/crear/', crear_reserva, name='crear_reserva'),
@@ -17,5 +18,5 @@ urlpatterns = [
     #path('reservaHotel/<int:id_reserva>/delete/', eliminar_reserva, name='eliminar_reserva'),
     path('reservaHotel/registrar/', registrar_reserva_hotel, name='registrar_reserva_hotel'),
     path('reservaHotel/subir_comprobante/<int:id_reserva_gen>/', subir_comprobante, name='subir_comprobante'),
-
+    path('reservaHotel/tarifa/', obtener_tarifa_hotel, name='obtener_tarifa_hotel'),
 ]
