@@ -133,30 +133,66 @@ def lista_usuarios(request):
 
 
 # 🔹 Actualizar usuario por ID
-@api_view(['PUT', 'PATCH'])
-@permission_classes([IsAuthenticated])
+@api_view(['PUT'])
+@permission_classes([AllowAny])
 def actualizar_usuario(request, id_usuario):
     try:
-        usuario = Usuario.objects.get(user=request.user)
+        usuario = Usuario.objects.get(id_usuario=id_usuario)
+        
+        # Actualizar campos del modelo Usuario
+        usuario.nombre = request.data.get('nombre', usuario.nombre)
+        usuario.app_paterno = request.data.get('app_paterno', usuario.app_paterno)
+        usuario.app_materno = request.data.get('app_materno', usuario.app_materno)
+        usuario.ci = request.data.get('ci', usuario.ci)
+        usuario.telefono = request.data.get('telefono', usuario.telefono)
+        usuario.email = request.data.get('email', usuario.email)
+        usuario.estado = request.data.get('estado', usuario.estado)
+        usuario.rol = request.data.get('rol', usuario.rol)
+        
+        # Si se proporciona una nueva contraseña, actualizarla
+        nueva_password = request.data.get('password')
+        if nueva_password:
+            usuario.password = nueva_password
+            # Actualizar también en el User de Django si existe
+            if usuario.user:
+                usuario.user.set_password(nueva_password)
+                usuario.user.save()
+        
+        # Actualizar email en el User de Django si existe
+        if usuario.user and usuario.email:
+            usuario.user.email = usuario.email
+            usuario.user.save()
+        
+        usuario.save()
+        
+        return Response(
+            {
+                'mensaje': 'Usuario actualizado correctamente.',
+                'usuario': {
+                    'id_usuario': usuario.id_usuario,
+                    'nombre': usuario.nombre,
+                    'app_paterno': usuario.app_paterno,
+                    'app_materno': usuario.app_materno,
+                    'ci': usuario.ci,
+                    'telefono': usuario.telefono,
+                    'email': usuario.email,
+                    'estado': usuario.estado,
+                    'rol': usuario.rol
+                }
+            },
+            status=status.HTTP_200_OK
+        )
+        
     except Usuario.DoesNotExist:
-        return Response({'error': 'Usuario no encontrado'}, status=status.HTTP_404_NOT_FOUND)
-
-    # Solo administradores pueden actualizar
-    if usuario.rol.lower() != 'Administrador':
-        return Response({'error': 'Acceso no autorizado'}, status=status.HTTP_403_FORBIDDEN)
-
-    usuario_obj = get_object_or_404(Usuario, id_usuario=id_usuario)
-
-    if request.method == 'PUT':
-        serializer = UsuarioSerializer(usuario_obj, data=request.data)  # reemplaza todo
-    else:  # PATCH
-        serializer = UsuarioSerializer(usuario_obj, data=request.data, partial=True)  # actualiza solo campos enviados
-
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {'error': 'Usuario no encontrado.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_400_BAD_REQUEST  
+        )
 
 
 #🔹 Eliminar usuario por ID
