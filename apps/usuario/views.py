@@ -40,24 +40,28 @@ def crear_usuario(request):
     estado = request.data.get('estado', 'A')  # por defecto activo
     rol = request.data.get('rol')
 
-    # Generar username (nombre + apellido paterno en minúsculas)
-    username = f"{nombre.lower()}.{app_paterno.lower()}"
-
-    # 🔹 Verificar unicidad de username
-    if User.objects.filter(username=username).exists():
-        return Response({"error": "El username ya existe"}, status=status.HTTP_400_BAD_REQUEST)
-
-    # 🔹 Verificar que email no esté repetido
-    if Usuario.objects.filter(email=email).exists() or User.objects.filter(email=email).exists():
-        return Response({"error": "El email ya está registrado"}, status=status.HTTP_400_BAD_REQUEST)
-
-    # 🔹 Verificar que CI no esté repetido
+    # Validar campos obligatorios
+    if not nombre or not app_paterno or not ci or not email or not password or not rol:
+        return Response({"error": "Faltan campos obligatorios"}, status=status.HTTP_400_BAD_REQUEST)
+    # Verificar duplicados
     if Usuario.objects.filter(ci=ci).exists():
         return Response({"error": "El CI ya está registrado"}, status=status.HTTP_400_BAD_REQUEST)
 
-    # 🔹 Verificar que teléfono no esté repetido (si se proporciona)
-    if telefono and Usuario.objects.filter(telefono=telefono).exists():
+    if Usuario.objects.filter(telefono=telefono).exists():
         return Response({"error": "El teléfono ya está registrado"}, status=status.HTTP_400_BAD_REQUEST)
+
+    if Usuario.objects.filter(email=email).exists():
+        return Response({"error": "El email ya está registrado"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # Generar username (nombre + apellido paterno en minúsculas)
+    username = f"{nombre.lower()}.{app_paterno.lower()}"
+
+    # Verificar unicidad
+    if User.objects.filter(username=username).exists():
+        return Response({"error": "El username ya existe"}, status=status.HTTP_400_BAD_REQUEST)
+
+    if User.objects.filter(email=email).exists():
+        return Response({"error": "El email ya está registrado"}, status=status.HTTP_400_BAD_REQUEST)
 
     # Crear usuario en auth_user
     user = User.objects.create_user(
@@ -75,7 +79,7 @@ def crear_usuario(request):
         ci=ci,
         telefono=telefono,
         email=email,
-        password=password,  # ⚠️ Idealmente encriptar si se usa en producción
+        password=password,  # plano, aunque lo ideal es encriptar
         estado=estado,
         rol=rol
     )
@@ -84,7 +88,7 @@ def crear_usuario(request):
     iniciales = f"{nombre[0]}{app_paterno[0]}{app_materno[0] if app_materno else ''}".upper()
     codigo = f"{iniciales}{ci}"
 
-    # Crear relación según el rol
+    # Si es empleado, crear en tabla empleado
     if rol.lower() == "empleado":
         empleado = Empleado.objects.create(
             cod_empleado=codigo,
@@ -92,6 +96,7 @@ def crear_usuario(request):
         )
         extra_data = {"empleado_id": empleado.id_empleado, "cod_empleado": empleado.cod_empleado}
 
+    # Si es administrador, crear en tabla administrador
     elif rol.lower() == "administrador":
         admin = Administrador.objects.create(
             cod_admi=codigo,
@@ -102,7 +107,7 @@ def crear_usuario(request):
     else:
         extra_data = {"info": "Usuario creado sin rol específico"}
 
-    # Respuesta final
+    # Serializar respuesta
     return Response({
         "id_usuario": usuario.id_usuario,
         "auth_user_id": user.id,
@@ -116,6 +121,87 @@ def crear_usuario(request):
         "rol": usuario.rol,
         **extra_data
     }, status=status.HTTP_201_CREATED)
+
+
+#🔹 Listar todos los usuarios (solo Administrador puede listarlos)
+
+@api_view(['GET']) 
+@permission_classes([IsAuthenticated]) 
+def lista_usuarios(request): 
+    try:
+        usuario = Usuario.objects.get(user=request.user)
+    except Usuario.DoesNotExist:
+        return Response({'error': 'Usuario no encontrado'}, status=404)
+
+    if usuario.rol in ['empleado', 'administrador']:
+        usuarios = Usuario.objects.all() 
+        serializer = UsuarioSerializer(usuarios, many=True)
+        return Response(serializer.data)
+    else: 
+        return Response({'error': 'Acceso no autorizado'}, status=403)
+
+
+# 🔹 Actualizar usuario por ID
+@api_view(['PUT'])
+@permission_classes([AllowAny])
+def actualizar_usuario(request, id_usuario):
+    try:
+        usuario = Usuario.objects.get(id_usuario=id_usuario)
+        
+        # Actualizar campos del modelo Usuario
+        usuario.nombre = request.data.get('nombre', usuario.nombre)
+        usuario.app_paterno = request.data.get('app_paterno', usuario.app_paterno)
+        usuario.app_materno = request.data.get('app_materno', usuario.app_materno)
+        usuario.ci = request.data.get('ci', usuario.ci)
+        usuario.telefono = request.data.get('telefono', usuario.telefono)
+        usuario.email = request.data.get('email', usuario.email)
+        usuario.estado = request.data.get('estado', usuario.estado)
+        usuario.rol = request.data.get('rol', usuario.rol)
+        
+        # Si se proporciona una nueva contraseña, actualizarla
+        nueva_password = request.data.get('password')
+        if nueva_password:
+            usuario.password = nueva_password
+            # Actualizar también en el User de Django si existe
+            if usuario.user:
+                usuario.user.set_password(nueva_password)
+                usuario.user.save()
+        
+        # Actualizar email en el User de Django si existe
+        if usuario.user and usuario.email:
+            usuario.user.email = usuario.email
+            usuario.user.save()
+        
+        usuario.save()
+        
+        return Response(
+            {
+                'mensaje': 'Usuario actualizado correctamente.',
+                'usuario': {
+                    'id_usuario': usuario.id_usuario,
+                    'nombre': usuario.nombre,
+                    'app_paterno': usuario.app_paterno,
+                    'app_materno': usuario.app_materno,
+                    'ci': usuario.ci,
+                    'telefono': usuario.telefono,
+                    'email': usuario.email,
+                    'estado': usuario.estado,
+                    'rol': usuario.rol
+                }
+            },
+            status=status.HTTP_200_OK
+        )
+        
+    except Usuario.DoesNotExist:
+        return Response(
+            {'error': 'Usuario no encontrado.'},
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return Response(
+            {'error': str(e)},
+            status=status.HTTP_400_BAD_REQUEST  
+        )
 
 
 #🔹 Eliminar usuario por ID
