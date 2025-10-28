@@ -34,6 +34,11 @@ def crear_servicio(request):
     if usuario.rol.lower() != 'administrador':
         return Response({'error': 'Acceso no autorizado'}, status=status.HTTP_403_FORBIDDEN)
 
+    # Validación nombre repetido
+    nombre = request.data.get('nombre', '').strip()
+    if ServiciosAdicionales.objects.filter(nombre__iexact=nombre).exists():
+        return Response({'error': 'Nombre repetido'}, status=status.HTTP_400_BAD_REQUEST)
+
     serializer = ServiciosAdicionalesSerializer(data=request.data)
     if serializer.is_valid():
         serializer.save()
