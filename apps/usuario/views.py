@@ -43,6 +43,15 @@ def crear_usuario(request):
     # Validar campos obligatorios
     if not nombre or not app_paterno or not ci or not email or not password or not rol:
         return Response({"error": "Faltan campos obligatorios"}, status=status.HTTP_400_BAD_REQUEST)
+    # Verificar duplicados
+    if Usuario.objects.filter(ci=ci).exists():
+        return Response({"error": "El CI ya está registrado"}, status=status.HTTP_400_BAD_REQUEST)
+
+    if Usuario.objects.filter(telefono=telefono).exists():
+        return Response({"error": "El teléfono ya está registrado"}, status=status.HTTP_400_BAD_REQUEST)
+
+    if Usuario.objects.filter(email=email).exists():
+        return Response({"error": "El email ya está registrado"}, status=status.HTTP_400_BAD_REQUEST)
 
     # Generar username (nombre + apellido paterno en minúsculas)
     username = f"{nombre.lower()}.{app_paterno.lower()}"
