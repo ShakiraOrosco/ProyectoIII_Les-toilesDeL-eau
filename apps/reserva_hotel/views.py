@@ -8,6 +8,9 @@ from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
+from django.db import transaction
+from datetime import datetime, date
+import re
 
 from .models import ReservaHotel
 from .seliralizers import ReservaHotelSerializer
@@ -21,6 +24,7 @@ from .queue_manager import gestor_cola
 
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
+
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny
 
@@ -256,3 +260,658 @@ def obtener_tarifa_hotel(request):
         return Response({'error': 'No existen tarifas registradas'}, status=status.HTTP_404_NOT_FOUND)
 
     return Response(list(tarifas), status=status.HTTP_200_OK)
+
+# ==============================================
+# 🔹 NUEVAS FUNCIONES GET, PUT, DELETE
+# ==============================================
+
+# 🔹 OBTENER TODAS LAS RESERVAS (GET)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def lista_reservas_hotel(request):
+    """
+    Retorna todas las reservas de hotel con información completa
+    Ejemplo: GET /api/reservaHotel/reservas/
+    """
+    try:
+        reservas = ReservaHotel.objects.select_related(
+            'datos_cliente',
+            'habitacion',
+            'reservas_gen'
+        ).all().order_by('-id_reserva_hotel')  # Ordenar por ID descendente
+        
+        data = []
+        for reserva in reservas:
+            # Datos del cliente
+            cliente_data = {
+                'id_datos_cliente': reserva.datos_cliente.id_datos_cliente,
+                'nombre': reserva.datos_cliente.nombre,
+                'app_paterno': reserva.datos_cliente.app_paterno,
+                'app_materno': reserva.datos_cliente.app_materno or '',
+                'telefono': reserva.datos_cliente.telefono,
+                'ci': reserva.datos_cliente.ci,
+                'email': reserva.datos_cliente.email
+            }
+            
+            # Datos de la habitación
+            habitacion_data = {
+                'id_habitacion': reserva.habitacion.id_habitacion,
+                'numero': reserva.habitacion.numero,
+                'piso': reserva.habitacion.piso,
+                'tipo': reserva.habitacion.tipo,
+                'amoblado': reserva.habitacion.amoblado,
+                'baño_priv': reserva.habitacion.baño_priv,
+                'estado': reserva.habitacion.estado
+            }
+            
+            # Datos de reserva general
+            reserva_gen_data = {
+                'id_reservas_gen': reserva.reservas_gen.id_reservas_gen,
+                'tipo': reserva.reservas_gen.tipo,
+                'tiene_pago': bool(reserva.reservas_gen.pago),
+                'administrador_id': reserva.reservas_gen.administrador.id_admi,  # ✅ CORRECTO - usa id_admi
+                'empleado_id': reserva.reservas_gen.empleado.id_empleado  # ✅ Esto depende de cómo se llame en Empleado
+            }
+            
+            # Calcular días de estadía
+            dias_estadia = 0
+            if reserva.fecha_ini and reserva.fecha_fin:
+                dias_estadia = (reserva.fecha_fin - reserva.fecha_ini).days
+                if dias_estadia < 0:
+                    dias_estadia = 0
+            
+            # Datos completos de la reserva
+            reserva_data = {
+                'id_reserva_hotel': reserva.id_reserva_hotel,
+                'cant_personas': reserva.cant_personas,
+                'amoblado': reserva.amoblado,
+                'baño_priv': reserva.baño_priv,
+                'fecha_ini': reserva.fecha_ini,
+                'fecha_fin': reserva.fecha_fin,
+                'dias_estadia': dias_estadia,
+                'estado': reserva.estado,
+                'estado_display': get_estado_display(reserva.estado),
+                'check_in': reserva.check_in,
+                'check_out': reserva.check_out,
+                'datos_cliente': cliente_data,
+                'habitacion': habitacion_data,
+                'reservas_gen': reserva_gen_data,
+                'fecha_creacion': reserva.reservas_gen.id_reservas_gen  # Como referencia temporal
+            }
+            
+            data.append(reserva_data)
+        
+        return Response({
+            'count': len(data),
+            'reservas': data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error al obtener las reservas: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# 🔹 OBTENER UNA RESERVA ESPECÍFICA (GET)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def detalle_reserva_hotel(request, id_reserva):
+    """
+    Retorna los detalles de una reserva específica
+    Ejemplo: GET /api/reservaHotel/reservas/1/
+    """
+    try:
+        reserva = get_object_or_404(ReservaHotel.objects.select_related(
+            'datos_cliente',
+            'habitacion',
+            'reservas_gen'
+        ), pk=id_reserva)
+        
+        # Datos del cliente
+        cliente_data = {
+            'id_datos_cliente': reserva.datos_cliente.id_datos_cliente,
+            'nombre': reserva.datos_cliente.nombre,
+            'app_paterno': reserva.datos_cliente.app_paterno,
+            'app_materno': reserva.datos_cliente.app_materno or '',
+            'telefono': reserva.datos_cliente.telefono,
+            'ci': reserva.datos_cliente.ci,
+            'email': reserva.datos_cliente.email
+        }
+        
+        # Datos de la habitación
+        habitacion_data = {
+            'id_habitacion': reserva.habitacion.id_habitacion,
+            'numero': reserva.habitacion.numero,
+            'piso': reserva.habitacion.piso,
+            'tipo': reserva.habitacion.tipo,
+            'amoblado': reserva.habitacion.amoblado,
+            'baño_priv': reserva.habitacion.baño_priv,
+            'estado': reserva.habitacion.estado
+        }
+        
+        # Datos de reserva general
+        reserva_gen_data = {
+            'id_reservas_gen': reserva.reservas_gen.id_reservas_gen,
+            'tipo': reserva.reservas_gen.tipo,
+            'tiene_pago': bool(reserva.reservas_gen.pago),
+            'administrador': reserva.reservas_gen.administrador.id_admi,
+            'empleado_id': reserva.reservas_gen.empleado.id_empleado
+        }
+        
+        # Calcular días de estadía
+        dias_estadia = 0
+        if reserva.fecha_ini and reserva.fecha_fin:
+            dias_estadia = (reserva.fecha_fin - reserva.fecha_ini).days
+            if dias_estadia < 0:
+                dias_estadia = 0
+        
+        # Datos completos de la reserva
+        reserva_data = {
+            'id_reserva_hotel': reserva.id_reserva_hotel,
+            'cant_personas': reserva.cant_personas,
+            'amoblado': reserva.amoblado,
+            'baño_priv': reserva.baño_priv,
+            'fecha_ini': reserva.fecha_ini,
+            'fecha_fin': reserva.fecha_fin,
+            'dias_estadia': dias_estadia,
+            'estado': reserva.estado,
+            'estado_display': get_estado_display(reserva.estado),
+            'check_in': reserva.check_in,
+            'check_out': reserva.check_out,
+            'datos_cliente': cliente_data,
+            'habitacion': habitacion_data,
+            'reservas_gen': reserva_gen_data
+        }
+        
+        return Response(reserva_data, status=status.HTTP_200_OK)
+        
+    except ReservaHotel.DoesNotExist:
+        return Response({
+            'error': 'Reserva no encontrada'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': f'Error al obtener la reserva: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# 🔹 ACTUALIZAR UNA RESERVA (PUT) - CREA NUEVO CLIENTE SI NO EXISTE
+@api_view(['PUT'])
+@permission_classes([AllowAny])
+@csrf_exempt
+def actualizar_reserva_hotel(request, id_reserva):
+    """
+    Actualiza una reserva existente, crea nuevo cliente si no existe
+    Ejemplo: PUT /api/reservaHotel/reservas/1/actualizar/
+    """
+    try:
+        with transaction.atomic():
+            reserva = get_object_or_404(ReservaHotel.objects.select_related(
+                'habitacion',
+                'reservas_gen',
+                'datos_cliente'
+            ), pk=id_reserva)
+            
+            data = request.data
+            campos_actualizados = []
+            habitacion_cambiada = False
+            cliente_creado = False
+            nuevo_cliente = None
+            
+            # --- 1️⃣ VERIFICAR SI SE QUIERE CAMBIAR A UN NUEVO CLIENTE (por CI)
+            if 'ci' in data:
+                nuevo_ci = int(data['ci'])
+                
+                # Buscar si ya existe un cliente con ese CI
+                cliente_existente = DatosCliente.objects.filter(ci=nuevo_ci).first()
+                
+                if cliente_existente:
+                    # Si existe, usar ese cliente
+                    if cliente_existente.id_datos_cliente != reserva.datos_cliente.id_datos_cliente:
+                        reserva.datos_cliente = cliente_existente
+                        campos_actualizados.append('cliente_cambiado')
+                        campos_actualizados.append('datos_cliente')
+                else:
+                    # Si NO existe, crear nuevo cliente
+                    # Validar que tengamos todos los datos necesarios
+                    campos_requeridos = ['nombre', 'app_paterno', 'telefono', 'email']
+                    campos_faltantes = [campo for campo in campos_requeridos if campo not in data]
+                    
+                    if campos_faltantes:
+                        return Response({
+                            'error': 'Para crear un nuevo cliente, se requieren todos los datos',
+                            'campos_faltantes': campos_faltantes,
+                            'campos_requeridos': campos_requeridos
+                        }, status=400)
+                    
+                    # Crear nuevo cliente
+                    nuevo_cliente = DatosCliente.objects.create(
+                        nombre=data['nombre'],
+                        app_paterno=data['app_paterno'],
+                        app_materno=data.get('app_materno', ''),
+                        telefono=int(data['telefono']),
+                        ci=nuevo_ci,
+                        email=data['email']
+                    )
+                    
+                    reserva.datos_cliente = nuevo_cliente
+                    cliente_creado = True
+                    campos_actualizados.append('cliente_creado')
+                    campos_actualizados.append('datos_cliente')
+            
+            # --- 2️⃣ ACTUALIZAR DATOS DEL CLIENTE ACTUAL SI NO SE CAMBIÓ
+            if 'ci' not in data or ('ci' in data and not cliente_creado and 'cliente_cambiado' not in campos_actualizados):
+                datos_cliente = reserva.datos_cliente
+                campos_cliente = ['nombre', 'app_paterno', 'app_materno', 'telefono', 'email']
+                campos_cliente_actualizados = []
+                
+                for campo in campos_cliente:
+                    if campo in data:
+                        valor_anterior = getattr(datos_cliente, campo)
+                        valor_nuevo = data[campo]
+                        
+                        # Validaciones específicas
+                        if campo == 'telefono':
+                            if not isinstance(valor_nuevo, int) and not str(valor_nuevo).isdigit():
+                                return Response({
+                                    'error': 'El teléfono debe ser un número válido',
+                                    'valor_recibido': valor_nuevo
+                                }, status=400)
+                            valor_nuevo = int(valor_nuevo)
+                        
+                        elif campo == 'email':
+                            if '@' not in str(valor_nuevo):
+                                return Response({
+                                    'error': 'El formato del email no es válido',
+                                    'valor_recibido': valor_nuevo
+                                }, status=400)
+                        
+                        # Solo actualizar si el valor realmente cambió
+                        if str(valor_anterior) != str(valor_nuevo):
+                            setattr(datos_cliente, campo, valor_nuevo)
+                            campos_cliente_actualizados.append(campo)
+                
+                if campos_cliente_actualizados:
+                    datos_cliente.save()
+                    campos_actualizados.append('datos_cliente')
+                    if campos_cliente_actualizados:
+                        campos_actualizados.extend([f'cliente_{campo}' for campo in campos_cliente_actualizados])
+            
+            # --- 3️⃣ CAMPOS BÁSICOS DE LA RESERVA
+            campos_basicos = ['cant_personas', 'estado', 'check_in', 'check_out', 'fecha_ini', 'fecha_fin']
+            
+            for campo in campos_basicos:
+                if campo in data:
+                    # Validaciones específicas por campo
+                    if campo == 'cant_personas':
+                        if not isinstance(data[campo], int) or data[campo] <= 0:
+                            return Response({
+                                'error': 'La cantidad de personas debe ser un número positivo',
+                                'valor_recibido': data[campo]
+                            }, status=400)
+                    
+                    elif campo in ['fecha_ini', 'fecha_fin']:
+                        try:
+                            fecha_validada = datetime.strptime(data[campo], '%Y-%m-%d').date()
+                            # Validar que fecha_fin sea posterior a fecha_ini
+                            if campo == 'fecha_fin' and 'fecha_ini' in data:
+                                fecha_ini_dt = datetime.strptime(data['fecha_ini'], '%Y-%m-%d').date()
+                                if fecha_validada <= fecha_ini_dt:
+                                    return Response({
+                                        'error': 'La fecha de fin debe ser posterior a la fecha de inicio',
+                                        'fecha_inicio': data['fecha_ini'],
+                                        'fecha_fin': data[campo]
+                                    }, status=400)
+                        except ValueError:
+                            return Response({
+                                'error': f'Formato de fecha inválido para {campo}. Use YYYY-MM-DD',
+                                'valor_recibido': data[campo]
+                            }, status=400)
+                    
+                    elif campo == 'estado':
+                        if data[campo] not in ['A', 'C', 'F']:
+                            return Response({
+                                'error': 'Estado inválido. Use A (Activa), C (Cancelada) o F (Finalizada)',
+                                'estados_permitidos': ['A', 'C', 'F'],
+                                'valor_recibido': data[campo]
+                            }, status=400)
+                        
+                        # Si cambia a Cancelada, liberar habitación
+                        if data[campo] == 'C' and reserva.estado != 'C':
+                            reserva.habitacion.estado = 'DISPONIBLE'
+                            reserva.habitacion.save()
+                            campos_actualizados.append('habitacion_liberada')
+                        
+                        # Si cambia de Cancelada a Activa, ocupar habitación
+                        if data[campo] == 'A' and reserva.estado == 'C':
+                            if reserva.habitacion.estado != 'DISPONIBLE':
+                                return Response({
+                                    'error': 'No se puede reactivar la reserva porque la habitación ya no está disponible',
+                                    'habitacion_id': reserva.habitacion.id_habitacion,
+                                    'estado_habitacion': reserva.habitacion.estado
+                                }, status=400)
+                            reserva.habitacion.estado = 'OCUPADA'
+                            reserva.habitacion.save()
+                            campos_actualizados.append('habitacion_ocupada')
+                    
+                    valor_anterior = getattr(reserva, campo)
+                    setattr(reserva, campo, data[campo])
+                    
+                    if str(valor_anterior) != str(data[campo]):
+                        campos_actualizados.append(campo)
+            
+            # --- 4️⃣ VERIFICAR SI CAMBIAN CARACTERÍSTICAS DE HABITACIÓN
+            amoblado_actual = data.get('amoblado', reserva.amoblado).upper()
+            baño_priv_actual = data.get('baño_priv', reserva.baño_priv).upper()
+            
+            caracteristicas_cambiaron = (amoblado_actual != reserva.amoblado or 
+                                       baño_priv_actual != reserva.baño_priv)
+            
+            if caracteristicas_cambiaron:
+                # Liberar la habitación actual
+                habitacion_anterior = reserva.habitacion
+                habitacion_anterior.estado = 'DISPONIBLE'
+                habitacion_anterior.save()
+                
+                # Buscar nueva habitación disponible
+                nueva_habitacion = Habitacion.objects.filter(
+                    amoblado=amoblado_actual,
+                    baño_priv=baño_priv_actual,
+                    estado='DISPONIBLE'
+                ).first()
+                
+                if not nueva_habitacion:
+                    habitacion_anterior.estado = 'OCUPADA'
+                    habitacion_anterior.save()
+                    return Response({
+                        'error': 'No hay habitaciones disponibles con las nuevas características',
+                        'caracteristicas_solicitadas': {
+                            'amoblado': amoblado_actual,
+                            'baño_priv': baño_priv_actual
+                        }
+                    }, status=404)
+                
+                reserva.habitacion = nueva_habitacion
+                reserva.amoblado = amoblado_actual
+                reserva.baño_priv = baño_priv_actual
+                nueva_habitacion.estado = 'OCUPADA'
+                nueva_habitacion.save()
+                
+                habitacion_cambiada = True
+                campos_actualizados.extend(['amoblado', 'baño_priv', 'habitacion'])
+            
+            # --- 5️⃣ VERIFICAR SI HAY CAMBIOS
+            if not campos_actualizados and not habitacion_cambiada:
+                return Response({
+                    'error': 'No se proporcionaron campos válidos para actualizar',
+                    'campos_permitidos': {
+                        'cliente': ['nombre', 'app_paterno', 'app_materno', 'telefono', 'ci', 'email'],
+                        'reserva': ['cant_personas', 'estado', 'check_in', 'check_out', 'fecha_ini', 'fecha_fin'],
+                        'habitacion': ['amoblado', 'baño_priv']
+                    }
+                }, status=400)
+            
+            reserva.save()
+            
+            # --- 6️⃣ PREPARAR RESPUESTA
+            respuesta = {
+                'mensaje': 'Reserva actualizada correctamente',
+                'reserva_id': reserva.id_reserva_hotel,
+                'campos_actualizados': campos_actualizados,
+                'estado_actual': get_estado_display(reserva.estado)
+            }
+            
+            if cliente_creado:
+                respuesta['cliente_creado'] = True
+                respuesta['nuevo_cliente_id'] = nuevo_cliente.id_datos_cliente
+                respuesta['cliente_info'] = {
+                    'nombre_completo': f"{nuevo_cliente.nombre} {nuevo_cliente.app_paterno} {nuevo_cliente.app_materno or ''}".strip(),
+                    'ci': nuevo_cliente.ci,
+                    'email': nuevo_cliente.email
+                }
+                respuesta['mensaje_cliente'] = 'Nuevo cliente creado exitosamente'
+            
+            elif 'cliente_cambiado' in campos_actualizados:
+                respuesta['cliente_cambiado'] = True
+                respuesta['nuevo_cliente_id'] = reserva.datos_cliente.id_datos_cliente
+                respuesta['mensaje_cliente'] = 'Cliente cambiado exitosamente'
+            
+            if habitacion_cambiada:
+                respuesta['habitacion_anterior'] = habitacion_anterior.id_habitacion
+                respuesta['habitacion_nueva'] = reserva.habitacion.id_habitacion
+                respuesta['mensaje_habitacion'] = 'Habitación cambiada exitosamente'
+            
+            return Response(respuesta, status=status.HTTP_200_OK)
+        
+    except ReservaHotel.DoesNotExist:
+        return Response({
+            'error': 'Reserva no encontrada',
+            'reserva_id': id_reserva
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': f'Error al actualizar la reserva: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+# 🔹 ELIMINACIÓN LÓGICA - CANCELAR RESERVA (DELETE)
+@api_view(['DELETE'])
+@permission_classes([AllowAny])
+def eliminar_reserva_hotel(request, id_reserva):
+    try:
+        reserva = get_object_or_404(ReservaHotel.objects.select_related(
+            'habitacion'
+        ), pk=id_reserva)
+        
+        # Verificar si ya está cancelada
+        if reserva.estado == 'C':
+            return Response({
+                'error': 'La reserva ya está cancelada'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Verificar si ya está finalizada
+        if reserva.estado == 'F':
+            return Response({
+                'error': 'No se puede cancelar una reserva ya finalizada'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Cambiar estado a Cancelada (ELIMINACIÓN LÓGICA)
+        estado_anterior = reserva.estado
+        reserva.estado = 'C'
+        reserva.save()
+        
+        # Liberar la habitación
+        habitacion = reserva.habitacion
+        habitacion.estado = 'DISPONIBLE'
+        habitacion.save()
+        
+        return Response({
+            'mensaje': 'Reserva cancelada correctamente',
+            'reserva_id': reserva.id_reserva_hotel,
+            'estado_anterior': get_estado_display(estado_anterior),
+            'estado_actual': 'Cancelada',
+            'habitacion_liberada': habitacion.id_habitacion,
+            'habitacion_estado': 'DISPONIBLE'
+        }, status=status.HTTP_200_OK)
+        
+    except ReservaHotel.DoesNotExist:
+        return Response({
+            'error': 'Reserva no encontrada'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': f'Error al cancelar la reserva: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# 🔹 OBTENER RESERVAS POR ESTADO (GET)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def reservas_por_estado(request, estado):
+    """
+    Retorna reservas filtradas por estado
+    Ejemplo: GET /api/reservaHotel/reservas/estado/A/
+    Estados: A=Activa, C=Cancelada, F=Finalizada
+    """
+    try:
+        # Validar estado
+        estados_validos = ['A', 'C', 'F']
+        if estado not in estados_validos:
+            return Response({
+                'error': f'Estado no válido. Estados permitidos: {estados_validos}'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        reservas = ReservaHotel.objects.select_related(
+            'datos_cliente',
+            'habitacion',
+            'reservas_gen'
+        ).filter(estado=estado).order_by('-fecha_ini')
+        
+        data = []
+        for reserva in reservas:
+            # Calcular días de estadía
+            dias_estadia = 0
+            if reserva.fecha_ini and reserva.fecha_fin:
+                dias_estadia = (reserva.fecha_fin - reserva.fecha_ini).days
+                if dias_estadia < 0:
+                    dias_estadia = 0
+            
+            reserva_data = {
+                'id_reserva_hotel': reserva.id_reserva_hotel,
+                'cant_personas': reserva.cant_personas,
+                'fecha_ini': reserva.fecha_ini,
+                'fecha_fin': reserva.fecha_fin,
+                'dias_estadia': dias_estadia,
+                'estado': reserva.estado,
+                'estado_display': get_estado_display(reserva.estado),
+                'cliente': f"{reserva.datos_cliente.nombre} {reserva.datos_cliente.app_paterno}",
+                'cliente_email': reserva.datos_cliente.email,
+                'habitacion': reserva.habitacion.numero,
+                'tipo_habitacion': f"{'Amoblado' if reserva.amoblado == 'S' else 'Básico'} + {'Baño privado' if reserva.baño_priv == 'S' else 'Baño compartido'}"
+            }
+            data.append(reserva_data)
+        
+        return Response({
+            'count': len(data),
+            'estado': estado,
+            'estado_display': get_estado_display(estado),
+            'reservas': data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error al obtener reservas por estado: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# 🔹 OBTENER RESERVAS POR CLIENTE (GET)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def reservas_por_cliente(request, cliente_id):
+    """
+    Retorna todas las reservas de un cliente específico
+    Ejemplo: GET /api/reservaHotel/reservas/cliente/1/
+    """
+    try:
+        cliente = get_object_or_404(DatosCliente, pk=cliente_id)
+        
+        reservas = ReservaHotel.objects.select_related(
+            'habitacion',
+            'reservas_gen'
+        ).filter(datos_cliente=cliente).order_by('-fecha_ini')
+        
+        data = []
+        for reserva in reservas:
+            # Calcular días de estadía
+            dias_estadia = 0
+            if reserva.fecha_ini and reserva.fecha_fin:
+                dias_estadia = (reserva.fecha_fin - reserva.fecha_ini).days
+                if dias_estadia < 0:
+                    dias_estadia = 0
+            
+            reserva_data = {
+                'id_reserva_hotel': reserva.id_reserva_hotel,
+                'cant_personas': reserva.cant_personas,
+                'fecha_ini': reserva.fecha_ini,
+                'fecha_fin': reserva.fecha_fin,
+                'dias_estadia': dias_estadia,
+                'estado': reserva.estado,
+                'estado_display': get_estado_display(reserva.estado),
+                'habitacion': {
+                    'numero': reserva.habitacion.numero,
+                    'piso': reserva.habitacion.piso,
+                    'tipo': reserva.habitacion.tipo
+                },
+                'tipo_reserva': f"{'Amoblado' if reserva.amoblado == 'S' else 'Básico'} + {'Baño privado' if reserva.baño_priv == 'S' else 'Baño compartido'}",
+                'check_in': reserva.check_in,
+                'check_out': reserva.check_out
+            }
+            data.append(reserva_data)
+        
+        return Response({
+            'cliente': {
+                'id': cliente.id_datos_cliente,
+                'nombre_completo': f"{cliente.nombre} {cliente.app_paterno} {cliente.app_materno or ''}".strip(),
+                'telefono': cliente.telefono,
+                'email': cliente.email,
+                'ci': cliente.ci
+            },
+            'total_reservas': len(data),
+            'reservas': data
+        }, status=status.HTTP_200_OK)
+        
+    except DatosCliente.DoesNotExist:
+        return Response({
+            'error': 'Cliente no encontrado'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': f'Error al obtener reservas del cliente: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# 🔹 OBTENER HABITACIONES DISPONIBLES (GET)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def habitaciones_disponibles(request):
+    """
+    Retorna todas las habitaciones disponibles
+    Ejemplo: GET /api/reservaHotel/habitaciones/disponibles/
+    """
+    try:
+        habitaciones = Habitacion.objects.filter(estado='DISPONIBLE').select_related('tarifa_hotel')
+        
+        data = []
+        for h in habitaciones:
+            data.append({
+                'id_habitacion': h.id_habitacion,
+                'numero': h.numero,
+                'piso': h.piso,
+                'tipo': h.tipo,
+                'amoblado': h.amoblado,
+                'baño_priv': h.baño_priv,
+                'estado': h.estado,
+                'tarifa_hotel': {
+                    'id_tarifa_hotel': h.tarifa_hotel.id_tarifa_hotel,
+                    'nombre': h.tarifa_hotel.nombre,
+                    'descripcion': h.tarifa_hotel.descripcion,
+                    'precio_persona': float(h.tarifa_hotel.precio_persona)
+                }
+            })
+        
+        return Response({
+            'count': len(data),
+            'habitaciones': data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error al obtener habitaciones: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# ==============================================
+# 🔹 FUNCIONES AUXILIARES
+# ==============================================
+
+def get_estado_display(estado):
+    """Convierte código de estado a texto legible"""
+    estados = {
+        'A': 'Activa',
+        'C': 'Cancelada', 
+        'F': 'Finalizada'
+    }
+    return estados.get(estado, 'Desconocido')

@@ -34,6 +34,11 @@ def crear_servicio(request):
     if usuario.rol.lower() != 'administrador':
         return Response({'error': 'Acceso no autorizado'}, status=status.HTTP_403_FORBIDDEN)
 
+    # Validación nombre repetido
+    nombre = request.data.get('nombre', '').strip()
+    if ServiciosAdicionales.objects.filter(nombre__iexact=nombre).exists():
+        return Response({'error': 'Nombre repetido'}, status=status.HTTP_400_BAD_REQUEST)
+
     serializer = ServiciosAdicionalesSerializer(data=request.data)
     if serializer.is_valid():
         serializer.save()
@@ -58,8 +63,6 @@ def detalle_servicio(request, id_servicio):
     serializer = ServiciosAdicionalesSerializer(servicio)
     return Response(serializer.data)
 
-
-# 🔹 Actualizar servicio (solo administrador)
 @api_view(['PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
 def actualizar_servicio(request, id_servicio):
@@ -72,15 +75,22 @@ def actualizar_servicio(request, id_servicio):
         return Response({'error': 'Acceso no autorizado'}, status=status.HTTP_403_FORBIDDEN)
 
     servicio = get_object_or_404(ServiciosAdicionales, id_servicios_adicionales=id_servicio)
+
+    # Validación nombre repetido
+    nombre = request.data.get('nombre', '').strip()
+    if nombre and ServiciosAdicionales.objects.filter(nombre__iexact=nombre).exclude(id_servicios_adicionales=id_servicio).exists():
+        return Response({'error': 'Nombre repetido'}, status=status.HTTP_400_BAD_REQUEST)
+
     if request.method == 'PUT':
-        serializer = ServiciosAdicionalesSerializer(servicio, data=request.data)  # reemplaza todo
+        serializer = ServiciosAdicionalesSerializer(servicio, data=request.data)
     else:  # PATCH
-        serializer = ServiciosAdicionalesSerializer(servicio, data=request.data, partial=True)  # actualiza parcial
+        serializer = ServiciosAdicionalesSerializer(servicio, data=request.data, partial=True)
 
     if serializer.is_valid():
         serializer.save()
         return Response(serializer.data, status=status.HTTP_200_OK)
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 ## 🔹 "Eliminar" servicio cambiando estado a Inactivo (solo administrador)
