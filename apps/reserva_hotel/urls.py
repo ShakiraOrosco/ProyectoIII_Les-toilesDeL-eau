@@ -1,10 +1,10 @@
 from django.urls import path
 from .views import (
     #crear_reserva,
-    #lista_reservas,
-    #detalle_reserva,
-    #actualizar_reserva,
-    #eliminar_reserva
+    #listar_reservas_hotel,
+    #obtener_reserva_hotel,
+    #actualizar_reserva_hotel,
+    #eliminar_reserva_hotel,
     subir_comprobante
 )
 from .views import registrar_reserva_hotel, obtener_tarifa_hotel 

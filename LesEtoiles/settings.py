@@ -126,6 +126,15 @@ DATABASES = {
         'PASSWORD': os.getenv("PASSWORD", "TixfB0Fy2hYO69bUUbOU"),
         'HOST': os.getenv("HOST", "b1v3w4dxnjqmxkxgd3wk-mysql.services.clever-cloud.com"),
         'PORT': os.getenv("PORT", "3306"),
+        
+        # ⭐ AGREGAR ESTAS OPCIONES CRÍTICAS:
+        'OPTIONS': {
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            'charset': 'utf8mb4',
+            'connect_timeout': 10,  # Timeout de conexión
+        },
+        'CONN_MAX_AGE': 0,  # ⚠️ CRÍTICO: Desactiva conexiones persistentes para threading
+        'ATOMIC_REQUESTS': False,  # No usar transacciones automáticas
     }
 }
 
