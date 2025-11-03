@@ -1,22 +1,42 @@
 from django.urls import path
 from .views import (
-    #crear_reserva,
-    #listar_reservas_hotel,
-    #obtener_reserva_hotel,
-    #actualizar_reserva_hotel,
-    #eliminar_reserva_hotel,
-    subir_comprobante
+    # 🔹 FUNCIONES EXISTENTES (NO CAMBIAR)
+    subir_comprobante,
+    registrar_reserva_hotel, 
+    obtener_tarifa_hotel,
+    
+    # 🔹 NUEVAS FUNCIONES
+    lista_reservas_hotel,
+    detalle_reserva_hotel,
+    actualizar_reserva_hotel,
+    eliminar_reserva_hotel,
+    reservas_por_estado,
+    reservas_por_cliente,
+    habitaciones_disponibles
 )
-from .views import registrar_reserva_hotel, obtener_tarifa_hotel 
-
 
 urlpatterns = [
-    #path('reservaHotel/crear/', crear_reserva, name='crear_reserva'),
-    #path('reservaHotel/', lista_reservas, name='lista_reservas'),
-    #path('reservaHotel/<int:id_reserva>/', detalle_reserva, name='detalle_reserva'),
-    #path('reservaHotel/<int:id_reserva>/update/', actualizar_reserva, name='actualizar_reserva'),
-    #path('reservaHotel/<int:id_reserva>/delete/', eliminar_reserva, name='eliminar_reserva'),
+    # ==============================================
+    # 🔹 URLs EXISTENTES (NO CAMBIAR)
+    # ==============================================
     path('reservaHotel/registrar/', registrar_reserva_hotel, name='registrar_reserva_hotel'),
     path('reservaHotel/subir_comprobante/<int:id_reserva_gen>/', subir_comprobante, name='subir_comprobante'),
     path('reservaHotel/tarifa/', obtener_tarifa_hotel, name='obtener_tarifa_hotel'),
+    
+    # ==============================================
+    # 🔹 NUEVAS URLs
+    # ==============================================
+    
+    # 🔹 GET endpoints
+    path('reservaHotel/reservas/', lista_reservas_hotel, name='lista_reservas_hotel'),
+    path('reservaHotel/reservas/<int:id_reserva>/', detalle_reserva_hotel, name='detalle_reserva_hotel'),
+    path('reservaHotel/reservas/estado/<str:estado>/', reservas_por_estado, name='reservas_por_estado'),
+    path('reservaHotel/reservas/cliente/<int:cliente_id>/', reservas_por_cliente, name='reservas_por_cliente'),
+    path('reservaHotel/habitaciones/disponibles/', habitaciones_disponibles, name='habitaciones_disponibles'),
+    
+    # 🔹 PUT endpoint
+    path('reservaHotel/reservas/<int:id_reserva>/actualizar/', actualizar_reserva_hotel, name='actualizar_reserva_hotel'),
+    
+    # 🔹 DELETE endpoint
+    path('reservaHotel/reservas/<int:id_reserva>/eliminar/', eliminar_reserva_hotel, name='eliminar_reserva_hotel'),
 ]
