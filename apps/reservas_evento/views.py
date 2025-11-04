@@ -15,11 +15,11 @@ from apps.servicios_adicionales.models import ServiciosAdicionales
 from apps.administrador.models import Administrador
 from apps.empleado.models import Empleado
 from .serializers import ReservasEventoSerializer, ServiciosAdicionalesSerializer
+from .queue_manager import gestor_cola_eventos
+from django.utils import timezone
 
 
 # 🔹 Función auxiliar para verificar si hay conflicto de horarios
-from django.utils import timezone
-
 def verificar_disponibilidad_servicio(servicio_id, fecha, hora_ini, hora_fin, excluir_reserva_id=None):
     # Convertir strings a datetime si es necesario
     if isinstance(hora_ini, str):
@@ -206,18 +206,24 @@ def verificar_disponibilidad(request):
         'mensaje': 'Todos los servicios están disponibles'
     }, status=status.HTTP_200_OK)
 
-# 🔹 Registrar una reserva de evento (CON VALIDACIÓN DE DISPONIBILIDAD)
+
+# 🔹 Registrar una reserva de evento CON SISTEMA DE COLA DE PRIORIDAD
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @csrf_exempt
 def registrar_reserva_evento(request):
-    from django.utils import timezone
-    from datetime import datetime
+    """
+    Registra una reserva de evento usando el sistema de cola de prioridad.
+    
+    La prioridad se calcula según:
+    - Cantidad de personas (mayor = más prioridad)
+    - Duración del evento (mayor = más prioridad)
+    - Cantidad de servicios adicionales (mayor = más prioridad)
+    """
     import json
-
     data = request.data
 
-    # --- 1️⃣ Datos del cliente
+    # --- 1️⃣ Validar y obtener/crear datos del cliente
     nombre = data.get('nombre')
     app_paterno = data.get('app_paterno')
     app_materno = data.get('app_materno')
@@ -249,7 +255,7 @@ def registrar_reserva_evento(request):
             email=email
         )
 
-    # --- 2️⃣ Datos del evento
+    # --- 2️⃣ Validar datos del evento
     cant_personas = data.get('cant_personas')
     fecha = data.get('fecha')
     hora_ini = data.get('hora_ini')
@@ -259,25 +265,19 @@ def registrar_reserva_evento(request):
     if not (cant_personas and fecha and hora_ini and hora_fin):
         return Response({'error': 'Faltan datos del evento'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # --- CONVERTIR A DATETIME aware
+    # Validar formato de fechas
     try:
-        # Convertir strings a datetime si vienen en formato ISO
-        if isinstance(hora_ini, str):
-            hora_ini = datetime.fromisoformat(hora_ini)
-        if isinstance(hora_fin, str):
-            hora_fin = datetime.fromisoformat(hora_fin)
-        if isinstance(fecha, str):
-            fecha = datetime.strptime(fecha, '%Y-%m-%d').date()
-
-        # Hacer aware si son naive
-        if timezone.is_naive(hora_ini):
-            hora_ini = timezone.make_aware(hora_ini, timezone.get_current_timezone())
-        if timezone.is_naive(hora_fin):
-            hora_fin = timezone.make_aware(hora_fin, timezone.get_current_timezone())
+        fecha_dt = datetime.strptime(fecha, '%Y-%m-%d').date()
+        hora_ini_dt = datetime.fromisoformat(hora_ini.replace('Z', '+00:00'))
+        hora_fin_dt = datetime.fromisoformat(hora_fin.replace('Z', '+00:00'))
+        
+        # Validar que hora_fin sea posterior a hora_ini
+        if hora_fin_dt <= hora_ini_dt:
+            return Response({'error': 'La hora de fin debe ser posterior a la hora de inicio'}, status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
         return Response({'error': f'Error al procesar fechas: {str(e)}'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # --- 3️⃣ Validar disponibilidad de servicios antes de crear la reserva
+    # --- 3️⃣ Procesar servicios adicionales
     servicios_ids = data.get('servicios_adicionales', [])
     if isinstance(servicios_ids, str):
         try:
@@ -285,32 +285,7 @@ def registrar_reserva_evento(request):
         except Exception:
             servicios_ids = []
 
-    servicios_no_disponibles = []
-    for servicio_id in servicios_ids:
-        resultado = verificar_disponibilidad_servicio(
-            servicio_id=servicio_id,
-            fecha=fecha,
-            hora_ini=hora_ini,
-            hora_fin=hora_fin
-        )
-        if not resultado['disponible']:
-            try:
-                servicio = ServiciosAdicionales.objects.get(pk=servicio_id)
-                servicios_no_disponibles.append({
-                    'id_servicio': servicio_id,
-                    'nombre_servicio': servicio.nombre,
-                    'conflictos': resultado['conflictos']
-                })
-            except ServiciosAdicionales.DoesNotExist:
-                pass
-
-    if servicios_no_disponibles:
-        return Response({
-            'error': 'Algunos servicios no están disponibles en el horario seleccionado',
-            'servicios_no_disponibles': servicios_no_disponibles
-        }, status=status.HTTP_409_CONFLICT)
-
-    # --- 4️⃣ Seleccionar primer empleado y primer administrador
+    # --- 4️⃣ Obtener empleado y administrador
     empleado = Empleado.objects.first()
     administrador = Administrador.objects.first()
 
@@ -319,49 +294,76 @@ def registrar_reserva_evento(request):
             'error': 'No existen registros de empleado o administrador en la base de datos'
         }, status=status.HTTP_400_BAD_REQUEST)
 
-    # --- 5️⃣ Crear reserva general con pago=None
-    reservas_gen = ReservasGen.objects.create(
-        tipo='E',
-        pago=None,
-        administrador=administrador,
-        empleado=empleado
+    # --- 5️⃣ Agregar la reserva a la cola de prioridad
+    datos_evento = {
+        'cant_personas': cant_personas,
+        'fecha': fecha,
+        'hora_ini': hora_ini,
+        'hora_fin': hora_fin,
+        'estado': estado
+    }
+    
+    request_reserva = gestor_cola_eventos.agregar_reserva(
+        datos_evento=datos_evento,
+        datos_cliente=datos_cliente,
+        servicios_ids=servicios_ids,
+        empleado=empleado,
+        administrador=administrador
     )
+    
+    # --- 6️⃣ Esperar el resultado (timeout de 10 segundos)
+    procesado = request_reserva.evento.wait(timeout=10)
+    
+    if not procesado:
+        return Response({
+            'error': 'Timeout procesando la reserva. Intente nuevamente.'
+        }, status=status.HTTP_408_REQUEST_TIMEOUT)
+    
+    # --- 7️⃣ Retornar el resultado
+    resultado = request_reserva.resultado
+    
+    if resultado['success']:
+        serializer = ReservasEventoSerializer(resultado['reserva'])
+        
+        # Calcular duración del evento
+        duracion_horas = (hora_fin_dt - hora_ini_dt).total_seconds() / 3600
+        
+        return Response({
+            'mensaje': 'Reserva de evento creada correctamente',
+            'reserva': serializer.data,
+            'cliente_id': resultado['datos_cliente'].id_datos_cliente,
+            'reserva_gen_id': resultado['reserva_gen'].id_reservas_gen,
+            'servicios_agregados': resultado['servicios_agregados'],
+            'info_prioridad': {
+                'duracion_horas': duracion_horas,
+                'cant_personas': cant_personas,
+                'cant_servicios': len(servicios_ids),
+                'prioridad_calculada': request_reserva.prioridad,
+                'mensaje_competencia': resultado.get('info_competencia', {}).get('mensaje', '')
+            }
+        }, status=status.HTTP_201_CREATED)
+    else:
+        status_code = status.HTTP_409_CONFLICT if resultado['codigo'] == 'RECHAZADO_POR_PRIORIDAD' else status.HTTP_400_BAD_REQUEST
+        return Response({
+            'error': resultado['error'],
+            'codigo': resultado['codigo'],
+            'info_debug': resultado.get('info_debug', {}),
+            'detalle': resultado.get('detalle', {})
+        }, status=status_code)
 
-    # --- 6️⃣ Crear la reserva de evento
-    reserva_evento = ReservasEvento.objects.create(
-        cant_personas=cant_personas,
-        hora_ini=hora_ini,
-        hora_fin=hora_fin,
-        fecha=fecha,
-        estado=estado,
-        reservas_gen=reservas_gen,
-        datos_cliente=datos_cliente
-    )
 
-    # --- 7️⃣ Agregar servicios adicionales
-    servicios_agregados = []
-    for servicio_id in servicios_ids:
-        servicio = ServiciosAdicionales.objects.filter(pk=servicio_id, estado='A').first()
-        if servicio:
-            ServiciosEvento.objects.create(
-                reservas_evento=reserva_evento,
-                servicios_adicionales=servicio
-            )
-            servicios_agregados.append({
-                'id': servicio.id_servicios_adicionales,
-                'nombre': servicio.nombre
-            })
+# 🔹 Obtener estadísticas de la cola de eventos
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def obtener_estadisticas_cola(request):
+    """
+    Retorna estadísticas del sistema de cola de prioridad para eventos.
+    
+    Ejemplo: GET /api/eventos/estadisticas-cola/
+    """
+    estadisticas = gestor_cola_eventos.obtener_estadisticas()
+    return Response(estadisticas, status=status.HTTP_200_OK)
 
-    # --- 8️⃣ Serializar respuesta
-    serializer = ReservasEventoSerializer(reserva_evento)
-
-    return Response({
-        'mensaje': 'Reserva de evento creada correctamente',
-        'reserva': serializer.data,
-        'cliente_id': datos_cliente.id_datos_cliente,
-        'reserva_gen_id': reservas_gen.id_reservas_gen,
-        'servicios_agregados': servicios_agregados
-    }, status=status.HTTP_201_CREATED)
 
 # 🔹 Listar servicios adicionales activos (para los checkboxes)
 @api_view(['GET'])
