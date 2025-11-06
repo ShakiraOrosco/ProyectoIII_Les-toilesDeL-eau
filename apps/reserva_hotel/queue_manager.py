@@ -192,7 +192,7 @@ class ColaReservasHotel:
             if not es_mayor_prioridad:
                 request.resultado = {
                     'success': False,
-                    'error': f'Hay otra solicitud con mayor prioridad para estas fechas',
+                    'error': f'La habitacion no se encuentra disponible para las fechas solicitadas.',
                     'codigo': 'RECHAZADO_POR_PRIORIDAD',
                     'info_debug': {
                         'solicitudes_conflictivas': len(solicitudes_conflictivas),
@@ -201,7 +201,7 @@ class ColaReservasHotel:
                         'mensaje': f'Tu prioridad: {request.prioridad}. Otra solicitud tiene prioridad {solicitud_con_mayor_prioridad.prioridad if solicitud_con_mayor_prioridad else "N/A"}.'
                     }
                 }
-                print(f"🚫 Solicitud rechazada - Prioridad insuficiente")
+                print(f"🚫 La habitacion no se encuentra disponible para las fechas solicitadas.")
                 request.evento.set()
                 self._limpiar_request(habitacion_id, request)
                 return
@@ -305,7 +305,7 @@ class ColaReservasHotel:
                         if (req.fecha_ini_dt < fecha_fin and req.fecha_fin_dt > fecha_ini):
                             req.resultado = {
                                 'success': False,
-                                'error': f'Una reserva con mayor prioridad fue aceptada (Prioridad: {request_aceptado.prioridad} vs {req.prioridad})',
+                                'error': f'La habitacion no se encuentra disponible para las fechas solicitadas.',
                                 'codigo': 'RECHAZADO_POR_PRIORIDAD',
                                 'detalle': {
                                     'prioridad_ganadora': request_aceptado.prioridad,
@@ -313,7 +313,7 @@ class ColaReservasHotel:
                                     'diferencia_prioridad': request_aceptado.prioridad - req.prioridad
                                 }
                             }
-                            print(f"🚫 Rechazando solicitud con prioridad {req.prioridad}")
+                            print(f"🚫La habitacion no se encuentra disponible para las fechas solicitadas.")
                             req.evento.set()
     
     def _limpiar_request(self, habitacion_id, request):
