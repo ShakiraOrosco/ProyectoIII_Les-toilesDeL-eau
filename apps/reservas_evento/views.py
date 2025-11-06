@@ -21,6 +21,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.utils import timezone
 from apps.servicios_evento.models import ServiciosEvento
+
 # 🔹 Función auxiliar para verificar si hay conflicto de horarios
 def verificar_disponibilidad_servicio(servicio_id, fecha, hora_ini, hora_fin, excluir_reserva_id=None):
     # Convertir strings a datetime si es necesario
@@ -257,7 +258,7 @@ def registrar_reserva_evento(request):
             email=email
         )
 
-    # --- 2️⃣ Validar datos del evento
+    # --- 2️⃣ Validar y convertir datos del evento
     cant_personas = data.get('cant_personas')
     fecha = data.get('fecha')
     hora_ini = data.get('hora_ini')
@@ -266,6 +267,14 @@ def registrar_reserva_evento(request):
 
     if not (cant_personas and fecha and hora_ini and hora_fin):
         return Response({'error': 'Faltan datos del evento'}, status=status.HTTP_400_BAD_REQUEST)
+
+    # 🔥 CONVERSIÓN EXPLÍCITA A ENTERO
+    try:
+        cant_personas = int(cant_personas)
+    except (ValueError, TypeError):
+        return Response({
+            'error': f'La cantidad de personas debe ser un número válido, recibido: {cant_personas}'
+        }, status=status.HTTP_400_BAD_REQUEST)
 
     # Validar formato de fechas
     try:
@@ -298,7 +307,7 @@ def registrar_reserva_evento(request):
 
     # --- 5️⃣ Agregar la reserva a la cola de prioridad
     datos_evento = {
-        'cant_personas': cant_personas,
+        'cant_personas': cant_personas,  # Ya convertido a int
         'fecha': fecha,
         'hora_ini': hora_ini,
         'hora_fin': hora_fin,
