@@ -342,10 +342,10 @@ class ColaReservasEvento:
         except Exception as e:
             request.resultado = {
                 'success': False,
-                'error': f'Error al procesar la reserva: {str(e)}',
+                'error': f'El servicio no esta disponible en este horario.',
                 'codigo': 'ERROR_PROCESAMIENTO'
             }
-            print(f"💥 Error: {str(e)}")
+            print(f"El servicio no esta disponible en este horario.")
             import traceback
             traceback.print_exc()
         
@@ -366,7 +366,7 @@ class ColaReservasEvento:
                         if request_aceptado.tiene_conflicto_servicios(req):
                             req.resultado = {
                                 'success': False,
-                                'error': f'Una reserva con mayor prioridad fue aceptada (Prioridad: {request_aceptado.prioridad:.2f} vs {req.prioridad:.2f})',
+                                'error': f'El servicio no esta disponible en este horario.',
                                 'codigo': 'RECHAZADO_POR_PRIORIDAD',
                                 'detalle': {
                                     'prioridad_ganadora': request_aceptado.prioridad,
@@ -374,7 +374,7 @@ class ColaReservasEvento:
                                     'diferencia_prioridad': request_aceptado.prioridad - req.prioridad
                                 }
                             }
-                            print(f"🚫 Rechazando solicitud con prioridad {req.prioridad:.2f}")
+                            print(f"🚫 El servicio no esta disponible en este horario.")
                             req.evento.set()
     
     def _limpiar_request(self, fecha_key, request):
