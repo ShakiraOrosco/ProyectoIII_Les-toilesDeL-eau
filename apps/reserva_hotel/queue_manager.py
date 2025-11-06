@@ -41,7 +41,7 @@ class ReservaRequest:
         fecha_ini = datetime.strptime(self.datos_reserva['fecha_ini'], '%Y-%m-%d')
         fecha_fin = datetime.strptime(self.datos_reserva['fecha_fin'], '%Y-%m-%d')
         duracion = (fecha_fin - fecha_ini).days
-        cant_personas = self.datos_reserva['cant_personas']
+        cant_personas = int(self.datos_reserva['cant_personas'])
         
         prioridad = duracion * 100 + cant_personas
         return prioridad
