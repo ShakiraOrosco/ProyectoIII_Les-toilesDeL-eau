@@ -915,3 +915,316 @@ def get_estado_display(estado):
         'F': 'Finalizada'
     }
     return estados.get(estado, 'Desconocido')
+
+# 🔹 REALIZAR CHECK-IN (POST)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@csrf_exempt
+def realizar_check_in(request, id_reserva):
+    """
+    Registra el check-in de una reserva
+    Ejemplo: POST /api/reservaHotel/reservas/1/check-in/
+    """
+    try:
+        with transaction.atomic():
+            reserva = get_object_or_404(ReservaHotel.objects.select_related(
+                'habitacion',
+                'datos_cliente'
+            ), pk=id_reserva)
+            
+            # --- VALIDACIONES ---
+            
+            # 1. Verificar que la reserva esté activa
+            if reserva.estado != 'A':
+                return Response({
+                    'error': 'Solo se puede hacer check-in en reservas activas',
+                    'estado_actual': get_estado_display(reserva.estado)
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # 2. Verificar que no se haya hecho check-in previamente
+            if reserva.check_in is not None:
+                return Response({
+                    'error': 'Esta reserva ya tiene un check-in registrado',
+                    'fecha_check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S')
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # 3. Verificar que la fecha actual esté dentro del rango de la reserva
+            fecha_actual = date.today()
+            if fecha_actual < reserva.fecha_ini:
+                return Response({
+                    'error': 'No se puede hacer check-in antes de la fecha de inicio de la reserva',
+                    'fecha_inicio_reserva': reserva.fecha_ini,
+                    'fecha_actual': fecha_actual
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if fecha_actual > reserva.fecha_fin:
+                return Response({
+                    'error': 'La fecha de la reserva ya expiró',
+                    'fecha_fin_reserva': reserva.fecha_fin,
+                    'fecha_actual': fecha_actual
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # --- REGISTRAR CHECK-IN ---
+            from django.utils import timezone
+            import pytz
+
+            # En realizar_check_in:
+            tz_bolivia = pytz.timezone('America/La_Paz')
+            hora_bolivia = timezone.now().astimezone(tz_bolivia)
+
+            # Esto guardará la hora en UTC, pero basada en la hora actual de Bolivia
+            reserva.check_in = datetime.now() - timezone.timedelta(hours=timezone.now().utcoffset().total_seconds() / 3600) + timezone.timedelta(hours= -4)
+            reserva.save()
+
+            # Al mostrar, convertir de nuevo a hora boliviana
+            ##check_in_local = timezone.localtime(reserva.check_in)
+            
+            # Asegurar que la habitación esté marcada como OCUPADA
+            #if reserva.habitacion.estado != 'OCUPADA':
+                ##reserva.habitacion.estado = 'OCUPADA'
+                #reserva.habitacion.save()
+            
+            return Response({
+                'mensaje': 'Check-in realizado correctamente',
+                'reserva_id': reserva.id_reserva_hotel,
+                'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S'),
+                'cliente': f"{reserva.datos_cliente.nombre} {reserva.datos_cliente.app_paterno}",
+                'habitacion': reserva.habitacion.numero,
+                'fecha_check_out_esperado': reserva.fecha_fin
+            }, status=status.HTTP_200_OK)
+            
+    except ReservaHotel.DoesNotExist:
+        return Response({
+            'error': 'Reserva no encontrada'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': f'Error al realizar check-in: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# 🔹 REALIZAR CHECK-OUT (POST)
+@api_view(['POST'])
+@permission_classes([AllowAny])
+@csrf_exempt
+def realizar_check_out(request, id_reserva):
+    """
+    Registra el check-out de una reserva y finaliza la reserva
+    Ejemplo: POST /api/reservaHotel/reservas/1/check-out/
+    """
+    try:
+        with transaction.atomic():
+            reserva = get_object_or_404(ReservaHotel.objects.select_related(
+                'habitacion',
+                'datos_cliente'
+            ), pk=id_reserva)
+            
+            # --- VALIDACIONES ---
+            
+            # 1. Verificar que la reserva esté activa
+            if reserva.estado != 'A':
+                return Response({
+                    'error': 'Solo se puede hacer check-out en reservas activas',
+                    'estado_actual': get_estado_display(reserva.estado)
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # 2. Verificar que se haya hecho check-in previamente
+            if reserva.check_in is None:
+                return Response({
+                    'error': 'No se puede hacer check-out sin haber realizado check-in primero'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # 3. Verificar que no se haya hecho check-out previamente
+            if reserva.check_out is not None:
+                return Response({
+                    'error': 'Esta reserva ya tiene un check-out registrado',
+                    'fecha_check_out': reserva.check_out.strftime('%Y-%m-%d %H:%M:%S')
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # --- REGISTRAR CHECK-OUT ---
+            from django.utils import timezone
+            reserva.check_out = timezone.now() - timezone.timedelta(hours=timezone.now().utcoffset().total_seconds() / 3600) + timezone.timedelta(hours= -4)
+            
+            # Cambiar estado de la reserva a Finalizada
+            reserva.estado = 'F'
+            reserva.save()
+            
+            # Liberar la habitación
+            #reserva.habitacion.estado = 'DISPONIBLE'
+            #reserva.habitacion.save()
+            
+            # Calcular duración de la estadía
+            duracion_estadia = reserva.check_out - reserva.check_in
+            dias = duracion_estadia.days
+            horas = duracion_estadia.seconds // 3600
+            minutos = (duracion_estadia.seconds % 3600) // 60
+            
+            return Response({
+                'mensaje': 'Check-out realizado correctamente',
+                'reserva_id': reserva.id_reserva_hotel,
+                'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S'),
+                'check_out': reserva.check_out.strftime('%Y-%m-%d %H:%M:%S'),
+                'duracion_estadia': {
+                    'dias': dias,
+                    'horas': horas,
+                    'minutos': minutos,
+                    'texto': f"{dias} días, {horas} horas, {minutos} minutos"
+                },
+                'cliente': f"{reserva.datos_cliente.nombre} {reserva.datos_cliente.app_paterno}",
+                'habitacion': reserva.habitacion.numero,
+                'estado_reserva': 'Finalizada',
+                'estado_habitacion': 'DISPONIBLE'
+            }, status=status.HTTP_200_OK)
+            
+    except ReservaHotel.DoesNotExist:
+        return Response({
+            'error': 'Reserva no encontrada'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': f'Error al realizar check-out: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# 🔹 CANCELAR CHECK-IN (DELETE) - Por si se equivocaron
+@api_view(['DELETE'])
+@permission_classes([AllowAny])
+@csrf_exempt
+def cancelar_check_in(request, id_reserva):
+    """
+    Cancela un check-in registrado (solo si no hay check-out)
+    Ejemplo: DELETE /api/reservaHotel/reservas/1/check-in/cancelar/
+    """
+    try:
+        with transaction.atomic():
+            reserva = get_object_or_404(ReservaHotel, pk=id_reserva)
+            
+            # Validaciones
+            if reserva.check_in is None:
+                return Response({
+                    'error': 'Esta reserva no tiene check-in registrado'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            if reserva.check_out is not None:
+                return Response({
+                    'error': 'No se puede cancelar el check-in porque ya existe un check-out'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # Cancelar check-in
+            check_in_anterior = reserva.check_in
+            reserva.check_in = None
+            reserva.save()
+            
+            return Response({
+                'mensaje': 'Check-in cancelado correctamente',
+                'reserva_id': reserva.id_reserva_hotel,
+                'check_in_cancelado': check_in_anterior.strftime('%Y-%m-%d %H:%M:%S')
+            }, status=status.HTTP_200_OK)
+            
+    except ReservaHotel.DoesNotExist:
+        return Response({
+            'error': 'Reserva no encontrada'
+        }, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({
+            'error': f'Error al cancelar check-in: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# 🔹 OBTENER RESERVAS PENDIENTES DE CHECK-IN (GET)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def reservas_pendientes_check_in(request):
+    """
+    Retorna reservas activas sin check-in que están dentro de su periodo
+    Ejemplo: GET /api/reservaHotel/reservas/pendientes-check-in/
+    """
+    try:
+        fecha_hoy = date.today()
+        
+        reservas = ReservaHotel.objects.select_related(
+            'datos_cliente',
+            'habitacion'
+        ).filter(
+            estado='A',
+            check_in__isnull=True,
+            fecha_ini__lte=fecha_hoy,
+            fecha_fin__gte=fecha_hoy
+        ).order_by('fecha_ini')
+        
+        data = []
+        for reserva in reservas:
+            data.append({
+                'id_reserva_hotel': reserva.id_reserva_hotel,
+                'cliente': f"{reserva.datos_cliente.nombre} {reserva.datos_cliente.app_paterno}",
+                'cliente_telefono': reserva.datos_cliente.telefono,
+                'habitacion': reserva.habitacion.numero,
+                'fecha_ini': reserva.fecha_ini,
+                'fecha_fin': reserva.fecha_fin,
+                'cant_personas': reserva.cant_personas,
+                'dias_desde_inicio': (fecha_hoy - reserva.fecha_ini).days
+            })
+        
+        return Response({
+            'count': len(data),
+            'fecha_actual': fecha_hoy,
+            'reservas': data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error al obtener reservas: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# 🔹 OBTENER RESERVAS CON CHECK-IN PERO SIN CHECK-OUT (GET)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def reservas_pendientes_check_out(request):
+    """
+    Retorna reservas que tienen check-in pero aún no tienen check-out
+    Ejemplo: GET /api/reservaHotel/reservas/pendientes-check-out/
+    """
+    try:
+        reservas = ReservaHotel.objects.select_related(
+            'datos_cliente',
+            'habitacion'
+        ).filter(
+            estado='A',
+            check_in__isnull=False,
+            check_out__isnull=True
+        ).order_by('check_in')
+        
+        data = []
+        from django.utils import timezone
+        ahora = timezone.now()
+        
+        for reserva in reservas:
+            tiempo_desde_check_in = ahora - reserva.check_in
+            dias_hospedaje = tiempo_desde_check_in.days
+            horas_hospedaje = tiempo_desde_check_in.seconds // 3600
+            
+            data.append({
+                'id_reserva_hotel': reserva.id_reserva_hotel,
+                'cliente': f"{reserva.datos_cliente.nombre} {reserva.datos_cliente.app_paterno}",
+                'cliente_telefono': reserva.datos_cliente.telefono,
+                'habitacion': reserva.habitacion.numero,
+                'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S'),
+                'fecha_check_out_esperado': reserva.fecha_fin,
+                'tiempo_hospedado': {
+                    'dias': dias_hospedaje,
+                    'horas': horas_hospedaje,
+                    'texto': f"{dias_hospedaje} días, {horas_hospedaje} horas"
+                },
+                'sobrepaso_fecha': date.today() > reserva.fecha_fin
+            })
+        
+        return Response({
+            'count': len(data),
+            'reservas': data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error al obtener reservas: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

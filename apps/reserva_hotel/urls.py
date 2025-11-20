@@ -14,7 +14,7 @@ from .views import (
     reservas_por_cliente,
     habitaciones_disponibles
 )
-
+from . import views
 urlpatterns = [
     # ==============================================
     # 🔹 URLs EXISTENTES (NO CAMBIAR)
@@ -39,4 +39,11 @@ urlpatterns = [
     
     # 🔹 DELETE endpoint
     path('reservaHotel/reservas/<int:id_reserva>/eliminar/', eliminar_reserva_hotel, name='eliminar_reserva_hotel'),
+    # Check-in / Check-out
+    path('reservaHotel/<int:id_reserva>/check-in/', views.realizar_check_in, name='realizar_check_in'),
+    path('reservaHotel/<int:id_reserva>/check-out/', views.realizar_check_out, name='realizar_check_out'),
+    path('reservaHotel/<int:id_reserva>/check-in/cancelar/', views.cancelar_check_in, name='cancelar_check_in'),
+    path('reservaHotel/pendientes-check-in/', views.reservas_pendientes_check_in, name='reservas_pendientes_check_in'),
+    path('reservaHotel/pendientes-check-out/', views.reservas_pendientes_check_out, name='reservas_pendientes_check_out'),
+
 ]
