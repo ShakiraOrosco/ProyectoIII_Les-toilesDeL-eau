@@ -39,4 +39,14 @@ urlpatterns = [
     
     # 🆕 Estadísticas de la cola
     path('reservaEvento/estadisticas-cola/', views.obtener_estadisticas_cola, name='estadisticas_cola'),
+
+    # 🔹 CHECK-IN Y CHECK-OUT DE EVENTOS
+    path('reservaEvento/<int:id_reserva>/check-in/', views.realizar_check_in_evento, name='realizar_check_in_evento'),
+    path('reservaEvento/<int:id_reserva>/check-out/', views.realizar_check_out_evento, name='realizar_check_out_evento'),
+    path('reservaEvento/<int:id_reserva>/check-in/cancelar/', views.cancelar_check_in_evento, name='cancelar_check_in_evento'),
+    
+    # 🔹 CONSULTAS DE GESTIÓN
+    path('reservaEvento/pendientes-check-in/', views.reservas_evento_pendientes_check_in, name='reservas_evento_pendientes_check_in'),
+    path('reservaEvento/pendientes-check-out/', views.reservas_evento_pendientes_check_out, name='reservas_evento_pendientes_check_out'),
+
 ]
