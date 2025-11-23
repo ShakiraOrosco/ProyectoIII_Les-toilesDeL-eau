@@ -931,6 +931,8 @@ def realizar_check_in(request, id_reserva):
                 'habitacion',
                 'datos_cliente'
             ), pk=id_reserva)
+
+            print(f"🔍 Iniciando check-in para reserva {id_reserva}")  # Debug
             
             # --- VALIDACIONES ---
             
