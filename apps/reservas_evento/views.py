@@ -5,7 +5,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
-from datetime import datetime
+from datetime import datetime, timedelta
 from django.db.models import Q
 from .models import ReservasEvento
 from apps.reservas_gen.models import ReservasGen
@@ -277,11 +277,29 @@ def registrar_reserva_evento(request):
         }, status=status.HTTP_400_BAD_REQUEST)
 
     # Validar formato de fechas
+    
+    import pytz
+
     try:
         fecha_dt = datetime.strptime(fecha, '%Y-%m-%d').date()
+        
+        # Parsear las horas y convertir a zona horaria de Bolivia
+        tz_bolivia = pytz.timezone('America/La_Paz')
+        
         hora_ini_dt = datetime.fromisoformat(hora_ini.replace('Z', '+00:00'))
         hora_fin_dt = datetime.fromisoformat(hora_fin.replace('Z', '+00:00'))
+        #
         
+        # Convertir de UTC a Bolivia 
+        hora_ini_dt = hora_ini_dt
+        hora_fin_dt = hora_fin_dt
+
+        #libreria pytz no tiene timedelta, se debe importar de datetime
+
+        #se le resta 4 horas a cada hora
+        hora_ini_dt = hora_ini_dt - timedelta(hours=4)
+        hora_fin_dt = hora_fin_dt - timedelta(hours=4)
+            
         # Validar que hora_fin sea posterior a hora_ini
         if hora_fin_dt <= hora_ini_dt:
             return Response({'error': 'La hora de fin debe ser posterior a la hora de inicio'}, status=status.HTTP_400_BAD_REQUEST)
@@ -309,8 +327,8 @@ def registrar_reserva_evento(request):
     datos_evento = {
         'cant_personas': cant_personas,  # Ya convertido a int
         'fecha': fecha,
-        'hora_ini': hora_ini,
-        'hora_fin': hora_fin,
+        'hora_ini': hora_ini_dt.isoformat(),  # ✅ Usa la hora AJUSTADA
+        'hora_fin': hora_fin_dt.isoformat(),  # ✅ Usa la hora AJUSTADA
         'estado': estado
     }
     
