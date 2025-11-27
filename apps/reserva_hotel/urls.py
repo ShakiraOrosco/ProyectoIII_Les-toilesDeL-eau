@@ -45,5 +45,6 @@ urlpatterns = [
     path('reservaHotel/<int:id_reserva>/check-in/cancelar/', views.cancelar_check_in, name='cancelar_check_in'),
     path('reservaHotel/pendientes-check-in/', views.reservas_pendientes_check_in, name='reservas_pendientes_check_in'),
     path('reservaHotel/pendientes-check-out/', views.reservas_pendientes_check_out, name='reservas_pendientes_check_out'),
+    path('reservaHotel/finalizadas/', views.reservas_finalizadas, name='reservas_finalizadas'),
 
 ]
