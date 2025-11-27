@@ -294,12 +294,7 @@ def registrar_reserva_evento(request):
         hora_ini_dt = hora_ini_dt
         hora_fin_dt = hora_fin_dt
 
-        #libreria pytz no tiene timedelta, se debe importar de datetime
-
-        #se le resta 4 horas a cada hora
-        hora_ini_dt = hora_ini_dt - timedelta(hours=4)
-        hora_fin_dt = hora_fin_dt - timedelta(hours=4)
-            
+        
         # Validar que hora_fin sea posterior a hora_ini
         if hora_fin_dt <= hora_ini_dt:
             return Response({'error': 'La hora de fin debe ser posterior a la hora de inicio'}, status=status.HTTP_400_BAD_REQUEST)
@@ -1211,7 +1206,7 @@ def realizar_check_in_evento(request, id_reserva):
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             # --- REGISTRAR CHECK-IN ---
-            reserva.check_in = timezone.now() - timezone.timedelta(hours=timezone.now().utcoffset().total_seconds() / 3600) + timezone.timedelta(hours=-4)
+            reserva.check_in = timezone.now() 
             reserva.save()
             
             # Obtener servicios adicionales de la reserva
@@ -1284,7 +1279,7 @@ def realizar_check_out_evento(request, id_reserva):
             
             # --- REGISTRAR CHECK-OUT ---
             from django.utils import timezone
-            reserva.check_out = timezone.now() - timezone.timedelta(hours=timezone.now().utcoffset().total_seconds() / 3600) + timezone.timedelta(hours=-4)
+            reserva.check_out = timezone.now() 
             
             # Cambiar estado de la reserva a Finalizada
             reserva.estado = 'F'

@@ -113,10 +113,11 @@ def registrar_reserva_hotel(request):
     # --- 3️⃣ Buscar habitación disponible SIN conflictos de fechas
     # Primero, obtener todas las habitaciones con las características solicitadas
     habitaciones_candidatas = Habitacion.objects.filter(
+        ~Q(estado='MANTENIMIENTO'),   # cualquier estado menos mantenimiento
         amoblado=amoblado,
         baño_priv=baño_priv,
-        estado='DISPONIBLE'
     )
+
     
     if not habitaciones_candidatas.exists():
         return Response({
@@ -434,12 +435,14 @@ def detalle_reserva_hotel(request, id_reserva):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 # 🔹 ACTUALIZAR UNA RESERVA (PUT) - CREA NUEVO CLIENTE SI NO EXISTE
+# 🔹 ACTUALIZAR UNA RESERVA (PUT) - CON LÓGICA DE CONFLICTO DE FECHAS
 @api_view(['PUT'])
 @permission_classes([AllowAny])
 @csrf_exempt
 def actualizar_reserva_hotel(request, id_reserva):
     """
-    Actualiza una reserva existente, crea nuevo cliente si no existe
+    Actualiza una reserva existente, crea nuevo cliente si no existe.
+    Busca habitaciones que NO estén en MANTENIMIENTO y que NO tengan conflictos de fechas.
     Ejemplo: PUT /api/reservaHotel/reservas/1/actualizar/
     """
     try:
@@ -471,7 +474,6 @@ def actualizar_reserva_hotel(request, id_reserva):
                         campos_actualizados.append('datos_cliente')
                 else:
                     # Si NO existe, crear nuevo cliente
-                    # Validar que tengamos todos los datos necesarios
                     campos_requeridos = ['nombre', 'app_paterno', 'telefono', 'email']
                     campos_faltantes = [campo for campo in campos_requeridos if campo not in data]
                     
@@ -535,8 +537,29 @@ def actualizar_reserva_hotel(request, id_reserva):
                     if campos_cliente_actualizados:
                         campos_actualizados.extend([f'cliente_{campo}' for campo in campos_cliente_actualizados])
             
-            # --- 3️⃣ CAMPOS BÁSICOS DE LA RESERVA
-            campos_basicos = ['cant_personas', 'estado', 'check_in', 'check_out', 'fecha_ini', 'fecha_fin']
+            # --- 3️⃣ OBTENER Y VALIDAR FECHAS (necesarias para verificar conflictos)
+            fecha_ini_str = data.get('fecha_ini', str(reserva.fecha_ini))
+            fecha_fin_str = data.get('fecha_fin', str(reserva.fecha_fin))
+            
+            try:
+                fecha_ini_dt = datetime.strptime(fecha_ini_str, '%Y-%m-%d').date()
+                fecha_fin_dt = datetime.strptime(fecha_fin_str, '%Y-%m-%d').date()
+                
+                # Validar que fecha_fin sea posterior a fecha_ini
+                if fecha_fin_dt <= fecha_ini_dt:
+                    return Response({
+                        'error': 'La fecha de fin debe ser posterior a la fecha de inicio',
+                        'fecha_inicio': fecha_ini_str,
+                        'fecha_fin': fecha_fin_str
+                    }, status=400)
+            except ValueError:
+                return Response({
+                    'error': 'Formato de fecha inválido. Use YYYY-MM-DD',
+                    'valor_recibido': {'fecha_ini': fecha_ini_str, 'fecha_fin': fecha_fin_str}
+                }, status=400)
+            
+            # --- 4️⃣ CAMPOS BÁSICOS DE LA RESERVA (excepto fechas, se manejan después)
+            campos_basicos = ['cant_personas', 'estado', 'check_in', 'check_out']
             
             for campo in campos_basicos:
                 if campo in data:
@@ -548,24 +571,6 @@ def actualizar_reserva_hotel(request, id_reserva):
                                 'valor_recibido': data[campo]
                             }, status=400)
                     
-                    elif campo in ['fecha_ini', 'fecha_fin']:
-                        try:
-                            fecha_validada = datetime.strptime(data[campo], '%Y-%m-%d').date()
-                            # Validar que fecha_fin sea posterior a fecha_ini
-                            if campo == 'fecha_fin' and 'fecha_ini' in data:
-                                fecha_ini_dt = datetime.strptime(data['fecha_ini'], '%Y-%m-%d').date()
-                                if fecha_validada <= fecha_ini_dt:
-                                    return Response({
-                                        'error': 'La fecha de fin debe ser posterior a la fecha de inicio',
-                                        'fecha_inicio': data['fecha_ini'],
-                                        'fecha_fin': data[campo]
-                                    }, status=400)
-                        except ValueError:
-                            return Response({
-                                'error': f'Formato de fecha inválido para {campo}. Use YYYY-MM-DD',
-                                'valor_recibido': data[campo]
-                            }, status=400)
-                    
                     elif campo == 'estado':
                         if data[campo] not in ['A', 'C', 'F']:
                             return Response({
@@ -574,23 +579,24 @@ def actualizar_reserva_hotel(request, id_reserva):
                                 'valor_recibido': data[campo]
                             }, status=400)
                         
-                        # Si cambia a Cancelada, liberar habitación
-                        if data[campo] == 'C' and reserva.estado != 'C':
-                            reserva.habitacion.estado = 'DISPONIBLE'
-                            reserva.habitacion.save()
-                            campos_actualizados.append('habitacion_liberada')
-                        
-                        # Si cambia de Cancelada a Activa, ocupar habitación
+                        # Si cambia de Cancelada a Activa, verificar conflictos
                         if data[campo] == 'A' and reserva.estado == 'C':
-                            if reserva.habitacion.estado != 'DISPONIBLE':
+                            # Verificar conflictos de fechas antes de reactivar
+                            reservas_conflicto = ReservaHotel.objects.filter(
+                                habitacion=reserva.habitacion,
+                                estado__in=['A', 'P']
+                            ).exclude(
+                                id_reserva_hotel=reserva.id_reserva_hotel
+                            ).filter(
+                                Q(fecha_ini__lt=fecha_fin_dt, fecha_fin__gt=fecha_ini_dt)
+                            )
+                            
+                            if reservas_conflicto.exists():
                                 return Response({
-                                    'error': 'No se puede reactivar la reserva porque la habitación ya no está disponible',
+                                    'error': 'No se puede reactivar la reserva porque la habitación tiene conflictos de fechas con otras reservas',
                                     'habitacion_id': reserva.habitacion.id_habitacion,
-                                    'estado_habitacion': reserva.habitacion.estado
+                                    'reservas_conflicto': reservas_conflicto.count()
                                 }, status=400)
-                            reserva.habitacion.estado = 'OCUPADA'
-                            reserva.habitacion.save()
-                            campos_actualizados.append('habitacion_ocupada')
                     
                     valor_anterior = getattr(reserva, campo)
                     setattr(reserva, campo, data[campo])
@@ -598,47 +604,92 @@ def actualizar_reserva_hotel(request, id_reserva):
                     if str(valor_anterior) != str(data[campo]):
                         campos_actualizados.append(campo)
             
-            # --- 4️⃣ VERIFICAR SI CAMBIAN CARACTERÍSTICAS DE HABITACIÓN
+            # --- 5️⃣ VERIFICAR SI CAMBIAN CARACTERÍSTICAS O FECHAS DE HABITACIÓN
             amoblado_actual = data.get('amoblado', reserva.amoblado).upper()
             baño_priv_actual = data.get('baño_priv', reserva.baño_priv).upper()
             
             caracteristicas_cambiaron = (amoblado_actual != reserva.amoblado or 
                                        baño_priv_actual != reserva.baño_priv)
             
-            if caracteristicas_cambiaron:
-                # Liberar la habitación actual
+            fechas_cambiaron = (fecha_ini_dt != reserva.fecha_ini or 
+                              fecha_fin_dt != reserva.fecha_fin)
+            
+            # Si cambiaron características O fechas, buscar nueva habitación
+            if caracteristicas_cambiaron or fechas_cambiaron:
                 habitacion_anterior = reserva.habitacion
-                habitacion_anterior.estado = 'DISPONIBLE'
-                habitacion_anterior.save()
                 
-                # Buscar nueva habitación disponible
-                nueva_habitacion = Habitacion.objects.filter(
+                # --- BUSCAR HABITACIÓN SIN CONFLICTOS (IGUAL QUE EN REGISTRAR) ---
+                
+                # Obtener todas las habitaciones candidatas (NO en mantenimiento)
+                habitaciones_candidatas = Habitacion.objects.filter(
+                    ~Q(estado='MANTENIMIENTO'),
                     amoblado=amoblado_actual,
                     baño_priv=baño_priv_actual,
-                    estado='DISPONIBLE'
-                ).first()
+                )
                 
-                if not nueva_habitacion:
-                    habitacion_anterior.estado = 'OCUPADA'
-                    habitacion_anterior.save()
+                if not habitaciones_candidatas.exists():
                     return Response({
-                        'error': 'No hay habitaciones disponibles con las nuevas características',
+                        'error': 'No hay habitaciones disponibles con esas características',
                         'caracteristicas_solicitadas': {
                             'amoblado': amoblado_actual,
                             'baño_priv': baño_priv_actual
                         }
                     }, status=404)
                 
-                reserva.habitacion = nueva_habitacion
+                # Buscar una habitación sin conflictos de fechas
+                habitacion_nueva = None
+                for hab in habitaciones_candidatas:
+                    # Verificar si hay reservas que se solapen con las fechas solicitadas
+                    # IMPORTANTE: Excluir la reserva actual de la búsqueda
+                    reservas_conflicto = ReservaHotel.objects.filter(
+                        habitacion=hab,
+                        estado__in=['A', 'P']  # Activas o Pendientes
+                    ).exclude(
+                        id_reserva_hotel=reserva.id_reserva_hotel  # ✅ EXCLUIR RESERVA ACTUAL
+                    ).filter(
+                        # Condición de solapamiento de fechas
+                        Q(fecha_ini__lt=fecha_fin_dt, fecha_fin__gt=fecha_ini_dt)
+                    )
+                    
+                    if not reservas_conflicto.exists():
+                        habitacion_nueva = hab
+                        break
+                
+                if not habitacion_nueva:
+                    return Response({
+                        'error': 'No hay habitaciones disponibles con esas características en las fechas seleccionadas',
+                        'detalle': 'Todas las habitaciones que cumplen con los requisitos ya están reservadas en ese período',
+                        'caracteristicas_solicitadas': {
+                            'amoblado': amoblado_actual,
+                            'baño_priv': baño_priv_actual
+                        },
+                        'fechas_solicitadas': {
+                            'fecha_ini': fecha_ini_str,
+                            'fecha_fin': fecha_fin_str
+                        }
+                    }, status=404)
+                
+                # --- ACTUALIZAR HABITACIÓN ---
+                
+                # Si la habitación cambió, marcar el cambio
+                if habitacion_nueva.id_habitacion != habitacion_anterior.id_habitacion:
+                    habitacion_cambiada = True
+                    campos_actualizados.append('habitacion')
+                
+                reserva.habitacion = habitacion_nueva
                 reserva.amoblado = amoblado_actual
                 reserva.baño_priv = baño_priv_actual
-                nueva_habitacion.estado = 'OCUPADA'
-                nueva_habitacion.save()
                 
-                habitacion_cambiada = True
-                campos_actualizados.extend(['amoblado', 'baño_priv', 'habitacion'])
+                if caracteristicas_cambiaron:
+                    campos_actualizados.extend(['amoblado', 'baño_priv'])
             
-            # --- 5️⃣ VERIFICAR SI HAY CAMBIOS
+            # --- 6️⃣ ACTUALIZAR FECHAS SI CAMBIARON
+            if fechas_cambiaron:
+                reserva.fecha_ini = fecha_ini_dt
+                reserva.fecha_fin = fecha_fin_dt
+                campos_actualizados.extend(['fecha_ini', 'fecha_fin'])
+            
+            # --- 7️⃣ VERIFICAR SI HAY CAMBIOS
             if not campos_actualizados and not habitacion_cambiada:
                 return Response({
                     'error': 'No se proporcionaron campos válidos para actualizar',
@@ -651,7 +702,7 @@ def actualizar_reserva_hotel(request, id_reserva):
             
             reserva.save()
             
-            # --- 6️⃣ PREPARAR RESPUESTA
+            # --- 8️⃣ PREPARAR RESPUESTA
             respuesta = {
                 'mensaje': 'Reserva actualizada correctamente',
                 'reserva_id': reserva.id_reserva_hotel,
@@ -677,7 +728,14 @@ def actualizar_reserva_hotel(request, id_reserva):
             if habitacion_cambiada:
                 respuesta['habitacion_anterior'] = habitacion_anterior.id_habitacion
                 respuesta['habitacion_nueva'] = reserva.habitacion.id_habitacion
-                respuesta['mensaje_habitacion'] = 'Habitación cambiada exitosamente'
+                respuesta['mensaje_habitacion'] = 'Habitación cambiada exitosamente debido a cambio de características o fechas'
+            
+            if fechas_cambiaron:
+                respuesta['fechas_actualizadas'] = {
+                    'fecha_ini': str(reserva.fecha_ini),
+                    'fecha_fin': str(reserva.fecha_fin),
+                    'dias_estadia': (reserva.fecha_fin - reserva.fecha_ini).days
+                }
             
             return Response(respuesta, status=status.HTTP_200_OK)
         
@@ -689,8 +747,8 @@ def actualizar_reserva_hotel(request, id_reserva):
     except Exception as e:
         return Response({
             'error': f'Error al actualizar la reserva: {str(e)}'
-        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)   
+     
 # 🔹 ELIMINACIÓN LÓGICA - CANCELAR RESERVA (DELETE)
 @api_view(['DELETE'])
 @permission_classes([AllowAny])
@@ -718,16 +776,16 @@ def eliminar_reserva_hotel(request, id_reserva):
         reserva.save()
         
         # Liberar la habitación
-        habitacion = reserva.habitacion
-        habitacion.estado = 'DISPONIBLE'
-        habitacion.save()
+        #habitacion = reserva.habitacion
+        #habitacion.estado = 'DISPONIBLE'
+        #habitacion.save()
         
         return Response({
             'mensaje': 'Reserva cancelada correctamente',
             'reserva_id': reserva.id_reserva_hotel,
             'estado_anterior': get_estado_display(estado_anterior),
             'estado_actual': 'Cancelada',
-            'habitacion_liberada': habitacion.id_habitacion,
+            #'habitacion_liberada': habitacion.id_habitacion,
             'habitacion_estado': 'DISPONIBLE'
         }, status=status.HTTP_200_OK)
         
@@ -982,9 +1040,9 @@ def realizar_check_in(request, id_reserva):
             ##check_in_local = timezone.localtime(reserva.check_in)
             
             # Asegurar que la habitación esté marcada como OCUPADA
-            #if reserva.habitacion.estado != 'OCUPADA':
-                ##reserva.habitacion.estado = 'OCUPADA'
-                #reserva.habitacion.save()
+            if reserva.habitacion.estado != 'OCUPADA':
+                reserva.habitacion.estado = 'OCUPADA'
+                reserva.habitacion.save()
             
             return Response({
                 'mensaje': 'Check-in realizado correctamente',
@@ -1052,8 +1110,8 @@ def realizar_check_out(request, id_reserva):
             reserva.save()
             
             # Liberar la habitación
-            #reserva.habitacion.estado = 'DISPONIBLE'
-            #reserva.habitacion.save()
+            reserva.habitacion.estado = 'DISPONIBLE'
+            reserva.habitacion.save()
             
             # Calcular duración de la estadía
             duracion_estadia = reserva.check_out - reserva.check_in
