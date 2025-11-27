@@ -252,8 +252,8 @@ class ColaReservasHotel:
                         habitacion=habitacion
                     )
                     
-                    habitacion.estado = 'OCUPADA'
-                    habitacion.save()
+                    #habitacion.estado = 'OCUPADA'
+                    #habitacion.save()
                     
                     request.resultado = {
                         'success': True,
