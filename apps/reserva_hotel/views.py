@@ -1288,3 +1288,56 @@ def reservas_pendientes_check_out(request):
         return Response({
             'error': f'Error al obtener reservas: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def reservas_finalizadas(request):
+    """
+    Retorna reservas finalizadas (con check-out)
+    """
+    try:
+        reservas = ReservaHotel.objects.select_related(
+            'datos_cliente',
+            'habitacion'
+        ).filter(
+            estado='F'  # Reservas finalizadas
+        ).order_by('-check_out')
+        
+        data = []
+        for reserva in reservas:
+            duracion = None
+            if reserva.check_in and reserva.check_out:
+                duracion_estadia = reserva.check_out - reserva.check_in
+                dias = duracion_estadia.days
+                horas = duracion_estadia.seconds // 3600
+                minutos = (duracion_estadia.seconds % 3600) // 60
+                duracion = {
+                    'dias': dias,
+                    'horas': horas,
+                    'minutos': minutos,
+                    'texto': f"{dias}d {horas}h {minutos}m"
+                }
+            
+            data.append({
+                'id_reserva_hotel': reserva.id_reserva_hotel,
+                'cliente': f"{reserva.datos_cliente.nombre} {reserva.datos_cliente.app_paterno}",
+                'cliente_telefono': reserva.datos_cliente.telefono,
+                'habitacion': reserva.habitacion.numero,
+                'fecha_ini': reserva.fecha_ini,
+                'fecha_fin': reserva.fecha_fin,
+                'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S') if reserva.check_in else None,
+                'check_out': reserva.check_out.strftime('%Y-%m-%d %H:%M:%S') if reserva.check_out else None,
+                'cant_personas': reserva.cant_personas,
+                'duracion_estadia': duracion
+            })
+        
+        return Response({
+            'count': len(data),
+            'reservas': data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error al obtener reservas finalizadas: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
