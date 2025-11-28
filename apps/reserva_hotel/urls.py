@@ -47,4 +47,7 @@ urlpatterns = [
     path('reservaHotel/pendientes-check-out/', views.reservas_pendientes_check_out, name='reservas_pendientes_check_out'),
     path('reservaHotel/finalizadas/', views.reservas_finalizadas, name='reservas_finalizadas'),
 
+#🔹 Reservas canceladas
+    path('reservaHotel/canceladas/', views.reservas_canceladas, name='reservas_canceladas'),
+
 ]
