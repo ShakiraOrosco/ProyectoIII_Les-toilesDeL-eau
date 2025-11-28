@@ -1341,3 +1341,43 @@ def reservas_finalizadas(request):
         return Response({
             'error': f'Error al obtener reservas finalizadas: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# 🔹 OBTENER RESERVAS CANCELADAS (GET)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def reservas_canceladas(request):
+    """
+    Retorna todas las reservas canceladas (estado = 'C')
+    Ejemplo: GET /api/reservaHotel/canceladas/
+    """
+    try:
+        reservas = ReservaHotel.objects.select_related(
+            'datos_cliente',
+            'habitacion'
+        ).filter(
+            estado='C'
+        ).order_by('-fecha_ini')
+        
+        data = []
+        for reserva in reservas:
+            data.append({
+                'id_reserva_hotel': reserva.id_reserva_hotel,
+                'cliente': f"{reserva.datos_cliente.nombre} {reserva.datos_cliente.app_paterno}",
+                'cliente_telefono': reserva.datos_cliente.telefono,
+                'habitacion': reserva.habitacion.numero,
+                'fecha_ini': reserva.fecha_ini,
+                'fecha_fin': reserva.fecha_fin,
+                'cant_personas': reserva.cant_personas,
+                'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S') if reserva.check_in else None,
+                'check_out': reserva.check_out.strftime('%Y-%m-%d %H:%M:%S') if reserva.check_out else None,
+            })
+        
+        return Response({
+            'count': len(data),
+            'reservas': data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
