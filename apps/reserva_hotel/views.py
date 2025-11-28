@@ -1103,8 +1103,7 @@ def realizar_check_out(request, id_reserva):
             
             # --- REGISTRAR CHECK-OUT ---
             from django.utils import timezone
-            reserva.check_out = timezone.now() - timezone.timedelta(hours=timezone.now().utcoffset().total_seconds() / 3600) + timezone.timedelta(hours= -4)
-            
+            reserva.check_out = timezone.now()
             # Cambiar estado de la reserva a Finalizada
             reserva.estado = 'F'
             reserva.save()
@@ -1271,6 +1270,7 @@ def reservas_pendientes_check_out(request):
                 'habitacion': reserva.habitacion.numero,
                 'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S'),
                 'fecha_check_out_esperado': reserva.fecha_fin,
+                'cant_personas': reserva.cant_personas,
                 'tiempo_hospedado': {
                     'dias': dias_hospedaje,
                     'horas': horas_hospedaje,
