@@ -1370,6 +1370,7 @@ def reservas_canceladas(request):
                 'cant_personas': reserva.cant_personas,
                 'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S') if reserva.check_in else None,
                 'check_out': reserva.check_out.strftime('%Y-%m-%d %H:%M:%S') if reserva.check_out else None,
+                'estado': reserva.estado,
             })
         
         return Response({
