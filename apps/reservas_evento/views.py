@@ -1506,3 +1506,123 @@ def reservas_evento_pendientes_check_out(request):
         return Response({
             'error': f'Error al obtener reservas: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    # 🔹 OBTENER EVENTOS FINALIZADOS (GET)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def eventos_finalizados(request):
+    """
+    Retorna eventos finalizados (con check-out)
+    Ejemplo: GET /api/reservaEvento/finalizados/
+    """
+    try:
+        from django.utils import timezone
+        
+        reservas = ReservasEvento.objects.select_related(
+            'datos_cliente'
+        ).filter(
+            estado='F'  # Eventos finalizados
+        ).order_by('-check_out')
+        
+        data = []
+        for reserva in reservas:
+            duracion = None
+            if reserva.check_in and reserva.check_out:
+                duracion_evento = reserva.check_out - reserva.check_in
+                horas = duracion_evento.seconds // 3600
+                minutos = (duracion_evento.seconds % 3600) // 60
+                duracion = {
+                    'horas': horas,
+                    'minutos': minutos,
+                    'texto': f"{horas}h {minutos}m"
+                }
+            
+            # Contar servicios
+            total_servicios = ServiciosEvento.objects.filter(reservas_evento=reserva).count()
+            
+            # Obtener nombres de servicios
+            servicios = list(ServiciosEvento.objects.filter(
+                reservas_evento=reserva
+            ).select_related('servicios_adicionales').values(
+                'servicios_adicionales__nombre'
+            ))
+            servicios_nombres = [s['servicios_adicionales__nombre'] for s in servicios]
+            
+            data.append({
+                'id_reservas_evento': reserva.id_reservas_evento,
+                'cliente': f"{reserva.datos_cliente.nombre} {reserva.datos_cliente.app_paterno}",
+                'cliente_telefono': reserva.datos_cliente.telefono,
+                'fecha': reserva.fecha,
+                'hora_ini': reserva.hora_ini.strftime('%H:%M'),
+                'hora_fin': reserva.hora_fin.strftime('%H:%M'),
+                'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S') if reserva.check_in else None,
+                'check_out': reserva.check_out.strftime('%Y-%m-%d %H:%M:%S') if reserva.check_out else None,
+                'cant_personas': reserva.cant_personas,
+                'total_servicios': total_servicios,
+                'servicios_contratados': servicios_nombres,
+                'duracion_real': duracion,
+                'estado': reserva.estado
+            })
+        
+        return Response({
+            'count': len(data),
+            'reservas': data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error al obtener eventos finalizados: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# 🔹 OBTENER EVENTOS CANCELADOS (GET)
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def eventos_cancelados(request):
+    """
+    Retorna eventos cancelados
+    Ejemplo: GET /api/reservaEvento/cancelados/
+    """
+    try:
+        reservas = ReservasEvento.objects.select_related(
+            'datos_cliente'
+        ).filter(
+            estado='C'  # Eventos cancelados
+        ).order_by('-fecha')
+        
+        data = []
+        for reserva in reservas:
+            # Contar servicios
+            total_servicios = ServiciosEvento.objects.filter(reservas_evento=reserva).count()
+            
+            # Obtener nombres de servicios
+            servicios = list(ServiciosEvento.objects.filter(
+                reservas_evento=reserva
+            ).select_related('servicios_adicionales').values(
+                'servicios_adicionales__nombre'
+            ))
+            servicios_nombres = [s['servicios_adicionales__nombre'] for s in servicios]
+            
+            data.append({
+                'id_reservas_evento': reserva.id_reservas_evento,
+                'cliente': f"{reserva.datos_cliente.nombre} {reserva.datos_cliente.app_paterno}",
+                'cliente_telefono': reserva.datos_cliente.telefono,
+                'fecha': reserva.fecha,
+                'hora_ini': reserva.hora_ini.strftime('%H:%M'),
+                'hora_fin': reserva.hora_fin.strftime('%H:%M'),
+                'cant_personas': reserva.cant_personas,
+                'total_servicios': total_servicios,
+                'servicios_contratados': servicios_nombres,
+                'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S') if reserva.check_in else None,
+                'estado': reserva.estado
+            })
+        
+        return Response({
+            'count': len(data),
+            'reservas': data
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error al obtener eventos cancelados: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
