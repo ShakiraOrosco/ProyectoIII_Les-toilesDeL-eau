@@ -49,4 +49,8 @@ urlpatterns = [
     path('reservaEvento/pendientes-check-in/', views.reservas_evento_pendientes_check_in, name='reservas_evento_pendientes_check_in'),
     path('reservaEvento/pendientes-check-out/', views.reservas_evento_pendientes_check_out, name='reservas_evento_pendientes_check_out'),
 
+    path('reservaEvento/finalizados/', views.eventos_finalizados, name='eventos_finalizados'),
+    path('reservaEvento/cancelados/', views.eventos_cancelados, name='eventos_cancelados'),
+
+
 ]
