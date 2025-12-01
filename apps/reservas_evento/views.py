@@ -1626,3 +1626,221 @@ def eventos_cancelados(request):
         return Response({
             'error': f'Error al obtener eventos cancelados: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+import pytz
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def obtener_notificaciones_eventos(request):
+    """
+    Endpoint para obtener notificaciones de eventos.
+    Flutter hará polling cada 30-60 segundos.
+    
+    GET /api/notificaciones/eventos/
+    
+    Retorna:
+    - Eventos que comienzan en los próximos 15 minutos
+    - Eventos que ya pasaron su hora de inicio sin check-in
+    """
+    try:
+        tz_bolivia = pytz.timezone('America/La_Paz')
+        ahora = timezone.now().astimezone(tz_bolivia)
+        fecha_hoy = ahora.date()
+        
+        notificaciones = []
+        
+        # ==========================================
+        # 1️⃣ NOTIFICACIONES PRE-INICIO (15 minutos antes)
+        # ==========================================
+        tiempo_alerta_max = ahora + timedelta(minutes=15)
+        tiempo_alerta_min = ahora + timedelta(minutes=1)  # Ventana de 1 minuto
+        
+        eventos_proximos = ReservasEvento.objects.filter(
+            estado='A',
+            fecha=fecha_hoy,
+            hora_ini__gte=tiempo_alerta_min,
+            hora_ini__lte=tiempo_alerta_max,
+            check_in__isnull=True
+        ).select_related('datos_cliente')
+        
+        for evento in eventos_proximos:
+            cliente = evento.datos_cliente
+            
+            # Calcular minutos exactos hasta el inicio
+            hora_ini_aware = evento.hora_ini.astimezone(tz_bolivia) if timezone.is_aware(evento.hora_ini) else tz_bolivia.localize(evento.hora_ini)
+            minutos_restantes = int((hora_ini_aware - ahora).total_seconds() / 60)
+            
+            # Convertir horas a timezone de Bolivia
+            hora_ini_str = hora_ini_aware.strftime('%H:%M')
+            hora_fin_aware = evento.hora_fin.astimezone(tz_bolivia) if timezone.is_aware(evento.hora_fin) else tz_bolivia.localize(evento.hora_fin)
+            hora_fin_str = hora_fin_aware.strftime('%H:%M')
+            
+            notificaciones.append({
+                'tipo': 'PRE_INICIO',
+                'prioridad': 'MEDIA',
+                'titulo': '⚠️ EVENTO PRÓXIMO A INICIAR',
+                'mensaje': f"El evento comienza en {minutos_restantes} minutos",
+                'reserva_id': evento.id_reservas_evento,
+                'cliente_nombre': f"{cliente.nombre} {cliente.app_paterno}",
+                'cliente_telefono': str(cliente.telefono),
+                'cliente_email': cliente.email,
+                'fecha': str(evento.fecha),
+                'hora_ini': hora_ini_str,
+                'hora_fin': hora_fin_str,
+                'cant_personas': evento.cant_personas,
+                'minutos_restantes': minutos_restantes,
+                'timestamp': ahora.isoformat()
+            })
+        
+        # ==========================================
+        # 2️⃣ NOTIFICACIONES DE RETRASO (Ya pasó la hora de inicio)
+        # ==========================================
+        eventos_con_retraso = ReservasEvento.objects.filter(
+            estado='A',
+            fecha=fecha_hoy,
+            hora_ini__lt=ahora,
+            hora_fin__gt=ahora,
+            check_in__isnull=True
+        ).select_related('datos_cliente')
+        
+        for evento in eventos_con_retraso:
+            cliente = evento.datos_cliente
+            
+            # Calcular tiempo transcurrido desde la hora de inicio
+            hora_ini_aware = evento.hora_ini.astimezone(tz_bolivia) if timezone.is_aware(evento.hora_ini) else tz_bolivia.localize(evento.hora_ini)
+            hora_fin_aware = evento.hora_fin.astimezone(tz_bolivia) if timezone.is_aware(evento.hora_fin) else tz_bolivia.localize(evento.hora_fin)
+            
+            tiempo_transcurrido = (ahora - hora_ini_aware).total_seconds()
+            minutos_retraso = int(tiempo_transcurrido / 60)
+            
+            hora_ini_str = hora_ini_aware.strftime('%H:%M')
+            hora_fin_str = hora_fin_aware.strftime('%H:%M')
+            
+            notificaciones.append({
+                'tipo': 'RETRASO',
+                'prioridad': 'ALTA',
+                'titulo': '🚨 CLIENTE NO HA REGISTRADO INICIO',
+                'mensaje': f"La reserva debió iniciar hace {minutos_retraso} minutos y el cliente aún no ha hecho check-in",
+                'reserva_id': evento.id_reservas_evento,
+                'cliente_nombre': f"{cliente.nombre} {cliente.app_paterno}",
+                'cliente_telefono': str(cliente.telefono),
+                'cliente_email': cliente.email,
+                'fecha': str(evento.fecha),
+                'hora_ini': hora_ini_str,
+                'hora_fin': hora_fin_str,
+                'cant_personas': evento.cant_personas,
+                'minutos_retraso': minutos_retraso,
+                'timestamp': ahora.isoformat()
+            })
+        
+        # ==========================================
+        # 3️⃣ EVENTOS PRÓXIMOS (próximas 2 horas) - INFO
+        # ==========================================
+        tiempo_futuro = ahora + timedelta(hours=2)
+        
+        eventos_futuros = ReservasEvento.objects.filter(
+            estado='A',
+            fecha=fecha_hoy,
+            hora_ini__gt=tiempo_alerta_max,
+            hora_ini__lte=tiempo_futuro,
+            check_in__isnull=True
+        ).select_related('datos_cliente').order_by('hora_ini')[:5]
+        
+        proximos_eventos = []
+        for evento in eventos_futuros:
+            hora_ini_aware = evento.hora_ini.astimezone(tz_bolivia) if timezone.is_aware(evento.hora_ini) else tz_bolivia.localize(evento.hora_ini)
+            minutos_restantes = int((hora_ini_aware - ahora).total_seconds() / 60)
+            
+            proximos_eventos.append({
+                'id': evento.id_reservas_evento,
+                'cliente': f"{evento.datos_cliente.nombre} {evento.datos_cliente.app_paterno}",
+                'hora_ini': evento.hora_ini.strftime('%H:%M'),
+                'cant_personas': evento.cant_personas,
+                'minutos_restantes': minutos_restantes
+            })
+        
+        return Response({
+            'notificaciones': notificaciones,
+            'total_notificaciones': len(notificaciones),
+            'proximos_eventos': proximos_eventos,
+            'timestamp_servidor': ahora.isoformat(),
+            'hay_notificaciones': len(notificaciones) > 0
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error al obtener notificaciones: {str(e)}',
+            'notificaciones': [],
+            'total_notificaciones': 0
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def estadisticas_eventos_hoy(request):
+    """
+    Endpoint para obtener estadísticas de eventos del día.
+    
+    GET /api/eventos/estadisticas-hoy/
+    """
+    try:
+        tz_bolivia = pytz.timezone('America/La_Paz')
+        ahora = timezone.now().astimezone(tz_bolivia)
+        fecha_hoy = ahora.date()
+        
+        # Contar eventos por estado
+        total_eventos_hoy = ReservasEvento.objects.filter(fecha=fecha_hoy).count()
+        eventos_activos = ReservasEvento.objects.filter(fecha=fecha_hoy, estado='A').count()
+        eventos_finalizados = ReservasEvento.objects.filter(fecha=fecha_hoy, estado='F').count()
+        eventos_cancelados = ReservasEvento.objects.filter(fecha=fecha_hoy, estado='C').count()
+        
+        # Eventos sin check-in que ya deberían haber empezado
+        eventos_sin_checkin = ReservasEvento.objects.filter(
+            fecha=fecha_hoy,
+            estado='A',
+            hora_ini__lt=ahora,
+            check_in__isnull=True
+        ).count()
+        
+        # Eventos en curso (con check-in, sin check-out)
+        eventos_en_curso = ReservasEvento.objects.filter(
+            fecha=fecha_hoy,
+            estado='A',
+            check_in__isnull=False,
+            check_out__isnull=True
+        ).count()
+        
+        # Próximo evento
+        proximo_evento = ReservasEvento.objects.filter(
+            fecha=fecha_hoy,
+            estado='A',
+            hora_ini__gte=ahora
+        ).select_related('datos_cliente').order_by('hora_ini').first()
+        
+        proximo = None
+        if proximo_evento:
+            hora_ini_aware = proximo_evento.hora_ini.astimezone(tz_bolivia) if timezone.is_aware(proximo_evento.hora_ini) else tz_bolivia.localize(proximo_evento.hora_ini)
+            minutos_restantes = int((hora_ini_aware - ahora).total_seconds() / 60)
+            
+            proximo = {
+                'id': proximo_evento.id_reservas_evento,
+                'cliente': f"{proximo_evento.datos_cliente.nombre} {proximo_evento.datos_cliente.app_paterno}",
+                'hora_ini': proximo_evento.hora_ini.strftime('%H:%M'),
+                'cant_personas': proximo_evento.cant_personas,
+                'minutos_restantes': minutos_restantes
+            }
+        
+        return Response({
+            'total_eventos_hoy': total_eventos_hoy,
+            'eventos_activos': eventos_activos,
+            'eventos_finalizados': eventos_finalizados,
+            'eventos_cancelados': eventos_cancelados,
+            'eventos_sin_checkin': eventos_sin_checkin,
+            'eventos_en_curso': eventos_en_curso,
+            'proximo_evento': proximo,
+            'fecha': str(fecha_hoy),
+            'hora_actual': ahora.strftime('%H:%M:%S')
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
