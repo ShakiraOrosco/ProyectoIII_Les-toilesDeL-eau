@@ -1383,3 +1383,278 @@ def reservas_canceladas(request):
         return Response({
             'error': f'Error: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+import pytz
+from datetime import timedelta
+from django.utils import timezone
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+from rest_framework import status
+from .models import ReservaHotel
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def obtener_notificaciones_hotel(request):
+    """
+    Endpoint para obtener notificaciones de reservas de hotel.
+    Flutter hará polling cada 30-60 segundos.
+    
+    GET /api/reservaHotel/notificaciones/
+    
+    Retorna:
+    - Reservas que deben iniciar hoy y aún no tienen check-in
+    - Reservas que ya pasaron su fecha de inicio sin check-in
+    """
+    try:
+        tz_bolivia = pytz.timezone('America/La_Paz')
+        ahora = timezone.now().astimezone(tz_bolivia)
+        fecha_hoy = ahora.date()
+        
+        notificaciones = []
+        
+        # ==========================================
+        # 1️⃣ NOTIFICACIONES PRE-INICIO (Reservas que inician hoy)
+        # ==========================================
+        reservas_hoy = ReservaHotel.objects.filter(
+            estado='A',
+            fecha_ini=fecha_hoy,
+            check_in__isnull=True
+        ).select_related('datos_cliente', 'habitacion')
+        
+        for reserva in reservas_hoy:
+            cliente = reserva.datos_cliente
+            
+            notificaciones.append({
+                'tipo': 'PRE_INICIO',
+                'prioridad': 'MEDIA',
+                'titulo': '⚠️ RESERVA DEBE INICIAR HOY',
+                'mensaje': f"La reserva de {cliente.nombre} debe iniciar hoy y aún no ha hecho check-in",
+                'reserva_id': reserva.id_reserva_hotel,
+                'cliente_nombre': f"{cliente.nombre} {cliente.app_paterno}",
+                'cliente_telefono': str(cliente.telefono),
+                'cliente_email': cliente.email,
+                'habitacion': reserva.habitacion.numero,
+                'fecha_ini': str(reserva.fecha_ini),
+                'fecha_fin': str(reserva.fecha_fin),
+                'cant_personas': reserva.cant_personas,
+                'timestamp': ahora.isoformat()
+            })
+        
+        # ==========================================
+        # 2️⃣ NOTIFICACIONES DE RETRASO (Ya pasó la fecha de inicio)
+        # ==========================================
+        reservas_con_retraso = ReservaHotel.objects.filter(
+            estado='A',
+            fecha_ini__lt=fecha_hoy,
+            fecha_fin__gte=fecha_hoy,
+            check_in__isnull=True
+        ).select_related('datos_cliente', 'habitacion')
+        
+        for reserva in reservas_con_retraso:
+            cliente = reserva.datos_cliente
+            
+            # Calcular días de retraso
+            dias_retraso = (fecha_hoy - reserva.fecha_ini).days
+            
+            notificaciones.append({
+                'tipo': 'RETRASO',
+                'prioridad': 'ALTA',
+                'titulo': '🚨 CLIENTE NO HA REGISTRADO CHECK-IN',
+                'mensaje': f"La reserva debió iniciar hace {dias_retraso} día(s) y el cliente aún no ha hecho check-in",
+                'reserva_id': reserva.id_reserva_hotel,
+                'cliente_nombre': f"{cliente.nombre} {cliente.app_paterno}",
+                'cliente_telefono': str(cliente.telefono),
+                'cliente_email': cliente.email,
+                'habitacion': reserva.habitacion.numero,
+                'fecha_ini': str(reserva.fecha_ini),
+                'fecha_fin': str(reserva.fecha_fin),
+                'cant_personas': reserva.cant_personas,
+                'dias_retraso': dias_retraso,
+                'timestamp': ahora.isoformat()
+            })
+        
+        # ==========================================
+        # 3️⃣ RESERVAS PRÓXIMAS (próximos 7 días) - INFO
+        # ==========================================
+        fecha_limite = fecha_hoy + timedelta(days=7)
+        
+        reservas_proximas = ReservaHotel.objects.filter(
+            estado='A',
+            fecha_ini__gt=fecha_hoy,
+            fecha_ini__lte=fecha_limite,
+            check_in__isnull=True
+        ).select_related('datos_cliente', 'habitacion').order_by('fecha_ini')[:10]
+        
+        proximas_reservas = []
+        for reserva in reservas_proximas:
+            dias_restantes = (reserva.fecha_ini - fecha_hoy).days
+            
+            proximas_reservas.append({
+                'id': reserva.id_reserva_hotel,
+                'cliente': f"{reserva.datos_cliente.nombre} {reserva.datos_cliente.app_paterno}",
+                'habitacion': reserva.habitacion.numero,
+                'fecha_ini': str(reserva.fecha_ini),
+                'fecha_fin': str(reserva.fecha_fin),
+                'cant_personas': reserva.cant_personas,
+                'dias_restantes': dias_restantes
+            })
+        
+        # ==========================================
+        # 4️⃣ CHECK-OUTS PENDIENTES (deben salir hoy o ya pasó la fecha)
+        # ==========================================
+        reservas_checkout_pendiente = ReservaHotel.objects.filter(
+            estado='A',
+            fecha_fin__lte=fecha_hoy,
+            check_in__isnull=False,
+            check_out__isnull=True
+        ).select_related('datos_cliente', 'habitacion')
+        
+        for reserva in reservas_checkout_pendiente:
+            cliente = reserva.datos_cliente
+            dias_excedidos = (fecha_hoy - reserva.fecha_fin).days
+            
+            if dias_excedidos > 0:
+                prioridad = 'ALTA'
+                titulo = '🚨 CHECK-OUT VENCIDO'
+                mensaje = f"La reserva venció hace {dias_excedidos} día(s) y el cliente no ha hecho check-out"
+            else:
+                prioridad = 'MEDIA'
+                titulo = '⚠️ CHECK-OUT PENDIENTE HOY'
+                mensaje = f"La reserva debe finalizar hoy y el cliente aún no ha hecho check-out"
+            
+            notificaciones.append({
+                'tipo': 'CHECK_OUT_PENDIENTE',
+                'prioridad': prioridad,
+                'titulo': titulo,
+                'mensaje': mensaje,
+                'reserva_id': reserva.id_reserva_hotel,
+                'cliente_nombre': f"{cliente.nombre} {cliente.app_paterno}",
+                'cliente_telefono': str(cliente.telefono),
+                'cliente_email': cliente.email,
+                'habitacion': reserva.habitacion.numero,
+                'fecha_ini': str(reserva.fecha_ini),
+                'fecha_fin': str(reserva.fecha_fin),
+                'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S'),
+                'cant_personas': reserva.cant_personas,
+                'dias_excedidos': dias_excedidos if dias_excedidos > 0 else 0,
+                'timestamp': ahora.isoformat()
+            })
+        
+        return Response({
+            'notificaciones': notificaciones,
+            'total_notificaciones': len(notificaciones),
+            'proximas_reservas': proximas_reservas,
+            'timestamp_servidor': ahora.isoformat(),
+            'hay_notificaciones': len(notificaciones) > 0
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error al obtener notificaciones: {str(e)}',
+            'notificaciones': [],
+            'total_notificaciones': 0
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def estadisticas_hotel_hoy(request):
+    """
+    Endpoint para obtener estadísticas de reservas de hotel del día.
+    
+    GET /api/reservaHotel/estadisticas-hoy/
+    """
+    try:
+        tz_bolivia = pytz.timezone('America/La_Paz')
+        ahora = timezone.now().astimezone(tz_bolivia)
+        fecha_hoy = ahora.date()
+        
+        # Reservas que deben iniciar hoy
+        reservas_inicio_hoy = ReservaHotel.objects.filter(
+            fecha_ini=fecha_hoy
+        ).count()
+        
+        # Reservas activas (con fecha de inicio <= hoy y fecha fin >= hoy)
+        reservas_activas = ReservaHotel.objects.filter(
+            estado='A',
+            fecha_ini__lte=fecha_hoy,
+            fecha_fin__gte=fecha_hoy
+        ).count()
+        
+        # Reservas con check-in (actualmente hospedados)
+        huespedes_actuales = ReservaHotel.objects.filter(
+            estado='A',
+            check_in__isnull=False,
+            check_out__isnull=True
+        ).count()
+        
+        # Check-ins pendientes (deben iniciar hoy o antes y no tienen check-in)
+        check_ins_pendientes = ReservaHotel.objects.filter(
+            estado='A',
+            fecha_ini__lte=fecha_hoy,
+            fecha_fin__gte=fecha_hoy,
+            check_in__isnull=True
+        ).count()
+        
+        # Check-outs esperados hoy
+        check_outs_hoy = ReservaHotel.objects.filter(
+            estado='A',
+            fecha_fin=fecha_hoy,
+            check_in__isnull=False,
+            check_out__isnull=True
+        ).count()
+        
+        # Check-outs vencidos (fecha fin < hoy y no tienen check-out)
+        check_outs_vencidos = ReservaHotel.objects.filter(
+            estado='A',
+            fecha_fin__lt=fecha_hoy,
+            check_in__isnull=False,
+            check_out__isnull=True
+        ).count()
+        
+        # Reservas finalizadas hoy
+        finalizadas_hoy = ReservaHotel.objects.filter(
+            estado='F',
+            check_out__date=fecha_hoy
+        ).count()
+        
+        # Próxima reserva que debe iniciar
+        proxima_reserva = ReservaHotel.objects.filter(
+            estado='A',
+            fecha_ini__gte=fecha_hoy,
+            check_in__isnull=True
+        ).select_related('datos_cliente', 'habitacion').order_by('fecha_ini').first()
+        
+        proxima = None
+        if proxima_reserva:
+            dias_restantes = (proxima_reserva.fecha_ini - fecha_hoy).days
+            
+            proxima = {
+                'id': proxima_reserva.id_reserva_hotel,
+                'cliente': f"{proxima_reserva.datos_cliente.nombre} {proxima_reserva.datos_cliente.app_paterno}",
+                'habitacion': proxima_reserva.habitacion.numero,
+                'fecha_ini': str(proxima_reserva.fecha_ini),
+                'cant_personas': proxima_reserva.cant_personas,
+                'dias_restantes': dias_restantes,
+                'es_hoy': dias_restantes == 0
+            }
+        
+        return Response({
+            'reservas_inicio_hoy': reservas_inicio_hoy,
+            'reservas_activas': reservas_activas,
+            'huespedes_actuales': huespedes_actuales,
+            'check_ins_pendientes': check_ins_pendientes,
+            'check_outs_hoy': check_outs_hoy,
+            'check_outs_vencidos': check_outs_vencidos,
+            'finalizadas_hoy': finalizadas_hoy,
+            'proxima_reserva': proxima,
+            'fecha': str(fecha_hoy),
+            'hora_actual': ahora.strftime('%H:%M:%S')
+        }, status=status.HTTP_200_OK)
+        
+    except Exception as e:
+        return Response({
+            'error': f'Error: {str(e)}'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

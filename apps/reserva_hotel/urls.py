@@ -49,5 +49,9 @@ urlpatterns = [
 
 #🔹 Reservas canceladas
     path('reservaHotel/canceladas/', views.reservas_canceladas, name='reservas_canceladas'),
+    #🔹 NOTIFICACIONES DE HOTELES
+    path('reservaHotel/notificaciones/', views.obtener_notificaciones_hotel, name='obtener_notificaciones_hotel'),
+    #🔹 Estadistica de hoteles de hoy
+    path('reservaHotel/estadisticas-hoy/', views.estadisticas_hotel_hoy, name='estadisticas_hotel_hoy'),
 
 ]

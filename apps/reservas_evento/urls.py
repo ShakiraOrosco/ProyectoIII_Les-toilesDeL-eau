@@ -52,5 +52,11 @@ urlpatterns = [
     path('reservaEvento/finalizados/', views.eventos_finalizados, name='eventos_finalizados'),
     path('reservaEvento/cancelados/', views.eventos_cancelados, name='eventos_cancelados'),
 
+    #🔹 NOTIFICACIONES DE EVENTOS
+    path('reservaEvento/notificaciones/', views.obtener_notificaciones_eventos, name='obtener_notificaciones_eventos'),
+    #🔹 Estadistica de eventos de hoy 
+    path('reservaEvento/estadisticas-hoy/', views.estadisticas_eventos_hoy, name='estadisticas_eventos_hoy'),
+
+
 
 ]
