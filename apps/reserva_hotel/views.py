@@ -974,13 +974,13 @@ def get_estado_display(estado):
     }
     return estados.get(estado, 'Desconocido')
 
-# 🔹 REALIZAR CHECK-IN (POST)
+# 🔹 REALIZAR INGRESO (POST)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @csrf_exempt
 def realizar_check_in(request, id_reserva):
     """
-    Registra el check-in de una reserva
+    Registra el ingreso de una reserva
     Ejemplo: POST /api/reservaHotel/reservas/1/check-in/
     """
     try:
@@ -990,29 +990,29 @@ def realizar_check_in(request, id_reserva):
                 'datos_cliente'
             ), pk=id_reserva)
 
-            print(f"🔍 Iniciando check-in para reserva {id_reserva}")  # Debug
+            print(f"🔍 Iniciando ingreso para reserva {id_reserva}")  # Debug
             
             # --- VALIDACIONES ---
             
             # 1. Verificar que la reserva esté activa
             if reserva.estado != 'A':
                 return Response({
-                    'error': 'Solo se puede hacer check-in en reservas activas',
+                    'error': 'Solo se puede hacer ingreso en reservas activas',
                     'estado_actual': get_estado_display(reserva.estado)
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # 2. Verificar que no se haya hecho check-in previamente
+            # 2. Verificar que no se haya hecho ingreso previamente
             if reserva.check_in is not None:
                 return Response({
-                    'error': 'Esta reserva ya tiene un check-in registrado',
-                    'fecha_check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S')
+                    'error': 'Esta reserva ya tiene un ingreso registrado',
+                    'fecha_ingreso': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S')
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             # 3. Verificar que la fecha actual esté dentro del rango de la reserva
             fecha_actual = date.today()
             if fecha_actual < reserva.fecha_ini:
                 return Response({
-                    'error': 'No se puede hacer check-in antes de la fecha de inicio de la reserva',
+                    'error': 'No se puede hacer ingreso antes de la fecha de inicio de la reserva',
                     'fecha_inicio_reserva': reserva.fecha_ini,
                     'fecha_actual': fecha_actual
                 }, status=status.HTTP_400_BAD_REQUEST)
@@ -1024,11 +1024,11 @@ def realizar_check_in(request, id_reserva):
                     'fecha_actual': fecha_actual
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # --- REGISTRAR CHECK-IN ---
+            # --- REGISTRAR INGRESO ---
             from django.utils import timezone
             import pytz
 
-            # En realizar_check_in:
+            # En realizar_ingreso:
             tz_bolivia = pytz.timezone('America/La_Paz')
             hora_bolivia = timezone.now().astimezone(tz_bolivia)
 
@@ -1045,9 +1045,9 @@ def realizar_check_in(request, id_reserva):
                 reserva.habitacion.save()
             
             return Response({
-                'mensaje': 'Check-in realizado correctamente',
+                'mensaje': 'Ingreso realizado correctamente',
                 'reserva_id': reserva.id_reserva_hotel,
-                'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S'),
+                'ingreso': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S'),
                 'cliente': f"{reserva.datos_cliente.nombre} {reserva.datos_cliente.app_paterno}",
                 'habitacion': reserva.habitacion.numero,
                 'fecha_check_out_esperado': reserva.fecha_fin
@@ -1059,17 +1059,17 @@ def realizar_check_in(request, id_reserva):
         }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({
-            'error': f'Error al realizar check-in: {str(e)}'
+            'error': f'Error al realizar ingreso: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# 🔹 REALIZAR CHECK-OUT (POST)
+# 🔹 REALIZAR SALIDA (POST)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @csrf_exempt
 def realizar_check_out(request, id_reserva):
     """
-    Registra el check-out de una reserva y finaliza la reserva
+    Registra el saLIda de una reserva y finaliza la reserva
     Ejemplo: POST /api/reservaHotel/reservas/1/check-out/
     """
     try:
@@ -1084,24 +1084,24 @@ def realizar_check_out(request, id_reserva):
             # 1. Verificar que la reserva esté activa
             if reserva.estado != 'A':
                 return Response({
-                    'error': 'Solo se puede hacer check-out en reservas activas',
+                    'error': 'Solo se puede hacer salida en reservas activas',
                     'estado_actual': get_estado_display(reserva.estado)
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # 2. Verificar que se haya hecho check-in previamente
+            # 2. Verificar que se haya hecho ingreso previamente
             if reserva.check_in is None:
                 return Response({
-                    'error': 'No se puede hacer check-out sin haber realizado check-in primero'
+                    'error': 'No se puede hacer salida sin haber realizado ingreso primero'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # 3. Verificar que no se haya hecho check-out previamente
+            # 3. Verificar que no se haya hecho salida previamente
             if reserva.check_out is not None:
                 return Response({
-                    'error': 'Esta reserva ya tiene un check-out registrado',
-                    'fecha_check_out': reserva.check_out.strftime('%Y-%m-%d %H:%M:%S')
+                    'error': 'Esta reserva ya tiene una salida registrada',
+                    'fecha_salida': reserva.check_out.strftime('%Y-%m-%d %H:%M:%S')
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # --- REGISTRAR CHECK-OUT ---
+            # --- REGISTRAR SALIDA ---
             from django.utils import timezone
             reserva.check_out = timezone.now()
             # Cambiar estado de la reserva a Finalizada
@@ -1119,7 +1119,7 @@ def realizar_check_out(request, id_reserva):
             minutos = (duracion_estadia.seconds % 3600) // 60
             
             return Response({
-                'mensaje': 'Check-out realizado correctamente',
+                'mensaje': 'Salida realizada correctamente',
                 'reserva_id': reserva.id_reserva_hotel,
                 'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S'),
                 'check_out': reserva.check_out.strftime('%Y-%m-%d %H:%M:%S'),
@@ -1141,17 +1141,17 @@ def realizar_check_out(request, id_reserva):
         }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({
-            'error': f'Error al realizar check-out: {str(e)}'
+            'error': f'Error al realizar salida: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# 🔹 CANCELAR CHECK-IN (DELETE) - Por si se equivocaron
+# 🔹 CANCELAR INGRESO (DELETE) - Por si se equivocaron
 @api_view(['DELETE'])
 @permission_classes([AllowAny])
 @csrf_exempt
 def cancelar_check_in(request, id_reserva):
     """
-    Cancela un check-in registrado (solo si no hay check-out)
+    Cancela un INGRESO registrado (solo si no hay salida registrada)
     Ejemplo: DELETE /api/reservaHotel/reservas/1/check-in/cancelar/
     """
     try:
@@ -1161,23 +1161,23 @@ def cancelar_check_in(request, id_reserva):
             # Validaciones
             if reserva.check_in is None:
                 return Response({
-                    'error': 'Esta reserva no tiene check-in registrado'
+                    'error': 'Esta reserva no tiene ingreso registrado'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             if reserva.check_out is not None:
                 return Response({
-                    'error': 'No se puede cancelar el check-in porque ya existe un check-out'
+                    'error': 'No se puede cancelar el ingreso porque ya existe una salida registrada'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Cancelar check-in
+            # Cancelar ingreso
             check_in_anterior = reserva.check_in
             reserva.check_in = None
             reserva.save()
             
             return Response({
-                'mensaje': 'Check-in cancelado correctamente',
+                'mensaje': 'ingreso cancelado correctamente',
                 'reserva_id': reserva.id_reserva_hotel,
-                'check_in_cancelado': check_in_anterior.strftime('%Y-%m-%d %H:%M:%S')
+                'ingreso_cancelado': check_in_anterior.strftime('%Y-%m-%d %H:%M:%S')
             }, status=status.HTTP_200_OK)
             
     except ReservaHotel.DoesNotExist:
@@ -1186,16 +1186,16 @@ def cancelar_check_in(request, id_reserva):
         }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({
-            'error': f'Error al cancelar check-in: {str(e)}'
+            'error': f'Error al cancelar ingreso: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# 🔹 OBTENER RESERVAS PENDIENTES DE CHECK-IN (GET)
+# 🔹 OBTENER RESERVAS PENDIENTES DE INGRESO (GET)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def reservas_pendientes_check_in(request):
     """
-    Retorna reservas activas sin check-in que están dentro de su periodo
+    Retorna reservas activas sin ingreso que están dentro de su periodo
     Ejemplo: GET /api/reservaHotel/reservas/pendientes-check-in/
     """
     try:
@@ -1236,12 +1236,12 @@ def reservas_pendientes_check_in(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# 🔹 OBTENER RESERVAS CON CHECK-IN PERO SIN CHECK-OUT (GET)
+# 🔹 OBTENER RESERVAS CON INGRESO  PERO SIN SALIDA (GET)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def reservas_pendientes_check_out(request):
     """
-    Retorna reservas que tienen check-in pero aún no tienen check-out
+    Retorna reservas que tienen ingreso pero aún no tienen salida registrada 
     Ejemplo: GET /api/reservaHotel/reservas/pendientes-check-out/
     """
     try:
@@ -1294,7 +1294,7 @@ def reservas_pendientes_check_out(request):
 @permission_classes([AllowAny])
 def reservas_finalizadas(request):
     """
-    Retorna reservas finalizadas (con check-out)
+    Retorna reservas finalizadas (con salida registrada)
     """
     try:
         reservas = ReservaHotel.objects.select_related(
@@ -1404,8 +1404,8 @@ def obtener_notificaciones_hotel(request):
     GET /api/reservaHotel/notificaciones/
     
     Retorna:
-    - Reservas que deben iniciar hoy y aún no tienen check-in
-    - Reservas que ya pasaron su fecha de inicio sin check-in
+    - Reservas que deben iniciar hoy y aún no tienen registro de ingreso
+    - Reservas que ya pasaron su fecha de inicio sin registro de ingreso
     """
     try:
         tz_bolivia = pytz.timezone('America/La_Paz')
@@ -1430,7 +1430,7 @@ def obtener_notificaciones_hotel(request):
                 'tipo': 'PRE_INICIO',
                 'prioridad': 'MEDIA',
                 'titulo': '⚠️ RESERVA DEBE INICIAR HOY',
-                'mensaje': f"La reserva de {cliente.nombre} debe iniciar hoy y aún no ha hecho check-in",
+                'mensaje': f"La reserva de {cliente.nombre} debe iniciar hoy y aún no ha hecho ingreso",
                 'reserva_id': reserva.id_reserva_hotel,
                 'cliente_nombre': f"{cliente.nombre} {cliente.app_paterno}",
                 'cliente_telefono': str(cliente.telefono),
@@ -1461,8 +1461,8 @@ def obtener_notificaciones_hotel(request):
             notificaciones.append({
                 'tipo': 'RETRASO',
                 'prioridad': 'ALTA',
-                'titulo': '🚨 CLIENTE NO HA REGISTRADO CHECK-IN',
-                'mensaje': f"La reserva debió iniciar hace {dias_retraso} día(s) y el cliente aún no ha hecho check-in",
+                'titulo': '🚨 CLIENTE NO HA REGISTRADO INGRESO',
+                'mensaje': f"La reserva debió iniciar hace {dias_retraso} día(s) y el cliente aún no ha hecho ingreso",
                 'reserva_id': reserva.id_reserva_hotel,
                 'cliente_nombre': f"{cliente.nombre} {cliente.app_paterno}",
                 'cliente_telefono': str(cliente.telefono),
@@ -1502,7 +1502,7 @@ def obtener_notificaciones_hotel(request):
             })
         
         # ==========================================
-        # 4️⃣ CHECK-OUTS PENDIENTES (deben salir hoy o ya pasó la fecha)
+        # 4️⃣ SALIDAS PENDIENTES (deben salir hoy o ya pasó la fecha)
         # ==========================================
         reservas_checkout_pendiente = ReservaHotel.objects.filter(
             estado='A',
@@ -1517,12 +1517,12 @@ def obtener_notificaciones_hotel(request):
             
             if dias_excedidos > 0:
                 prioridad = 'ALTA'
-                titulo = '🚨 CHECK-OUT VENCIDO'
-                mensaje = f"La reserva venció hace {dias_excedidos} día(s) y el cliente no ha hecho check-out"
+                titulo = '🚨 SALIDA VENCIDA'
+                mensaje = f"La reserva venció hace {dias_excedidos} día(s) y el cliente no ha hecho salida"
             else:
                 prioridad = 'MEDIA'
-                titulo = '⚠️ CHECK-OUT PENDIENTE HOY'
-                mensaje = f"La reserva debe finalizar hoy y el cliente aún no ha hecho check-out"
+                titulo = '⚠️ SALIDA PENDIENTE HOY'
+                mensaje = f"La reserva debe finalizar hoy y el cliente aún no ha hecho salida"
             
             notificaciones.append({
                 'tipo': 'CHECK_OUT_PENDIENTE',
@@ -1583,14 +1583,14 @@ def estadisticas_hotel_hoy(request):
             fecha_fin__gte=fecha_hoy
         ).count()
         
-        # Reservas con check-in (actualmente hospedados)
+        # Reservas con INGRESO (actualmente hospedados)
         huespedes_actuales = ReservaHotel.objects.filter(
             estado='A',
             check_in__isnull=False,
             check_out__isnull=True
         ).count()
         
-        # Check-ins pendientes (deben iniciar hoy o antes y no tienen check-in)
+        # Ingresos pendientes (deben iniciar hoy o antes y no tienen ingreso)
         check_ins_pendientes = ReservaHotel.objects.filter(
             estado='A',
             fecha_ini__lte=fecha_hoy,
@@ -1598,7 +1598,7 @@ def estadisticas_hotel_hoy(request):
             check_in__isnull=True
         ).count()
         
-        # Check-outs esperados hoy
+        # Salidas esperadas hoy
         check_outs_hoy = ReservaHotel.objects.filter(
             estado='A',
             fecha_fin=fecha_hoy,
@@ -1606,7 +1606,7 @@ def estadisticas_hotel_hoy(request):
             check_out__isnull=True
         ).count()
         
-        # Check-outs vencidos (fecha fin < hoy y no tienen check-out)
+        # Salidas vencidas (fecha fin < hoy y no tienen salida registrada)
         check_outs_vencidos = ReservaHotel.objects.filter(
             estado='A',
             fecha_fin__lt=fecha_hoy,

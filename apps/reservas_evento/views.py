@@ -1135,13 +1135,13 @@ def get_estado_display_evento(estado):
     }
     return estados.get(estado, 'Desconocido')
 
-# 🔹 REALIZAR CHECK-IN EVENTO (POST)
+# 🔹 REALIZAR INGRESO EVENTO (POST)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @csrf_exempt
 def realizar_check_in_evento(request, id_reserva):
     """
-    Registra el check-in de una reserva de evento
+    Registra el ingreso de una reserva de evento
     Ejemplo: POST /api/eventos/reservas/1/check-in/
     """
     try:
@@ -1155,15 +1155,15 @@ def realizar_check_in_evento(request, id_reserva):
             # 1. Verificar que la reserva esté activa
             if reserva.estado != 'A':
                 return Response({
-                    'error': 'Solo se puede hacer check-in en reservas activas',
+                    'error': 'Solo se puede hacer ingreso en reservas activas',
                     'estado_actual': get_estado_display_evento(reserva.estado)
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # 2. Verificar que no se haya hecho check-in previamente
+            # 2. Verificar que no se haya hecho ingreso previamente
             if reserva.check_in is not None:
                 return Response({
-                    'error': 'Esta reserva ya tiene un check-in registrado',
-                    'fecha_check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S')
+                    'error': 'Esta reserva ya tiene un ingreso registrado',
+                    'fecha_ingreso': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S')
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             # 3. Verificar que la fecha actual esté dentro del rango de la reserva
@@ -1178,18 +1178,18 @@ def realizar_check_in_evento(request, id_reserva):
             # Verificar que sea el día del evento
             if fecha_actual != reserva.fecha:
                 return Response({
-                    'error': 'El check-in solo se puede realizar el día del evento',
+                    'error': 'El ingreso solo se puede realizar el día del evento',
                     'fecha_evento': reserva.fecha,
                     'fecha_actual': fecha_actual
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # 4. Verificar que no se haga check-in demasiado temprano (por ejemplo, no más de 2 horas antes)
+            # 4. Verificar que no se haga ingreso demasiado temprano (por ejemplo, no más de 2 horas antes)
             hora_ini_evento = reserva.hora_ini.astimezone(tz_bolivia) if timezone.is_aware(reserva.hora_ini) else tz_bolivia.localize(reserva.hora_ini)
             diferencia_horas = (hora_ini_evento - hora_bolivia).total_seconds() / 3600
             
             if diferencia_horas > 2:
                 return Response({
-                    'error': 'El check-in solo puede realizarse hasta 2 horas antes del inicio del evento',
+                    'error': 'El ingreso solo puede realizarse hasta 2 horas antes del inicio del evento',
                     'hora_inicio_evento': hora_ini_evento.strftime('%H:%M'),
                     'hora_actual': hora_bolivia.strftime('%H:%M'),
                     'tiempo_restante': f"{int(diferencia_horas)} horas, {int((diferencia_horas % 1) * 60)} minutos"
@@ -1205,7 +1205,7 @@ def realizar_check_in_evento(request, id_reserva):
                     'hora_actual': hora_bolivia.strftime('%H:%M')
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # --- REGISTRAR CHECK-IN ---
+            # --- REGISTRAR INGRESO ---
             reserva.check_in = timezone.now() 
             reserva.save()
             
@@ -1219,7 +1219,7 @@ def realizar_check_in_evento(request, id_reserva):
             servicios_nombres = [s['servicios_adicionales__nombre'] for s in servicios]
             
             return Response({
-                'mensaje': 'Check-in del evento realizado correctamente',
+                'mensaje': 'Ingreso del evento realizado correctamente',
                 'reserva_id': reserva.id_reservas_evento,
                 'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S'),
                 'cliente': f"{reserva.datos_cliente.nombre} {reserva.datos_cliente.app_paterno}",
@@ -1236,17 +1236,17 @@ def realizar_check_in_evento(request, id_reserva):
         }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({
-            'error': f'Error al realizar check-in: {str(e)}'
+            'error': f'Error al realizar ingreso: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# 🔹 REALIZAR CHECK-OUT EVENTO (POST)
+# 🔹 REALIZAR SALIDA EVENTO (POST)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 @csrf_exempt
 def realizar_check_out_evento(request, id_reserva):
     """
-    Registra el check-out de una reserva de evento y finaliza la reserva
+    Registra la salida de una reserva de evento y finaliza la reserva
     Ejemplo: POST /api/eventos/reservas/1/check-out/
     """
     try:
@@ -1260,24 +1260,24 @@ def realizar_check_out_evento(request, id_reserva):
             # 1. Verificar que la reserva esté activa
             if reserva.estado != 'A':
                 return Response({
-                    'error': 'Solo se puede hacer check-out en reservas activas',
+                    'error': 'Solo se puede hacer registro de salida en reservas activas',
                     'estado_actual': get_estado_display_evento(reserva.estado)
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # 2. Verificar que se haya hecho check-in previamente
+            # 2. Verificar que se haya hecho registro de ingreso previamente
             if reserva.check_in is None:
                 return Response({
-                    'error': 'No se puede hacer check-out sin haber realizado check-in primero'
+                    'error': 'No se puede hacer salida sin haber realizado ingreso primero'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # 3. Verificar que no se haya hecho check-out previamente
+            # 3. Verificar que no se haya hecho salida previamente
             if reserva.check_out is not None:
                 return Response({
-                    'error': 'Esta reserva ya tiene un check-out registrado',
-                    'fecha_check_out': reserva.check_out.strftime('%Y-%m-%d %H:%M:%S')
+                    'error': 'Esta reserva ya tiene una salida registrada',
+                    'fecha_salida': reserva.check_out.strftime('%Y-%m-%d %H:%M:%S')
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # --- REGISTRAR CHECK-OUT ---
+            # --- REGISTRAR SALIDA ---
             from django.utils import timezone
             reserva.check_out = timezone.now() 
             
@@ -1301,7 +1301,7 @@ def realizar_check_out_evento(request, id_reserva):
             total_precio_servicios = sum(float(s['servicios_adicionales__precio']) for s in servicios)
             
             return Response({
-                'mensaje': 'Check-out del evento realizado correctamente',
+                'mensaje': 'Salida del evento realizada correctamente',
                 'reserva_id': reserva.id_reservas_evento,
                 'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S'),
                 'check_out': reserva.check_out.strftime('%Y-%m-%d %H:%M:%S'),
@@ -1328,17 +1328,17 @@ def realizar_check_out_evento(request, id_reserva):
         }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({
-            'error': f'Error al realizar check-out: {str(e)}'
+            'error': f'Error al realizar salida: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# 🔹 CANCELAR CHECK-IN EVENTO (DELETE) - Por si se equivocaron
+# 🔹 CANCELAR INGRESO EVENTO (DELETE) - Por si se equivocaron
 @api_view(['DELETE'])
 @permission_classes([AllowAny])
 @csrf_exempt
 def cancelar_check_in_evento(request, id_reserva):
     """
-    Cancela un check-in registrado de evento (solo si no hay check-out)
+    Cancela un ingreso registrado de evento (solo si no hay salida)
     Ejemplo: DELETE /api/eventos/reservas/1/check-in/cancelar/
     """
     try:
@@ -1348,21 +1348,21 @@ def cancelar_check_in_evento(request, id_reserva):
             # Validaciones
             if reserva.check_in is None:
                 return Response({
-                    'error': 'Esta reserva de evento no tiene check-in registrado'
+                    'error': 'Esta reserva de evento no tiene ingreso registrado'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
             if reserva.check_out is not None:
                 return Response({
-                    'error': 'No se puede cancelar el check-in porque ya existe un check-out'
+                    'error': 'No se puede cancelar el ingreso porque ya existe una salida registrada'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
-            # Cancelar check-in
+            # Cancelar ingreso
             check_in_anterior = reserva.check_in
             reserva.check_in = None
             reserva.save()
             
             return Response({
-                'mensaje': 'Check-in del evento cancelado correctamente',
+                'mensaje': 'Ingreso del evento cancelado correctamente',
                 'reserva_id': reserva.id_reservas_evento,
                 'check_in_cancelado': check_in_anterior.strftime('%Y-%m-%d %H:%M:%S')
             }, status=status.HTTP_200_OK)
@@ -1373,16 +1373,16 @@ def cancelar_check_in_evento(request, id_reserva):
         }, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return Response({
-            'error': f'Error al cancelar check-in: {str(e)}'
+            'error': f'Error al cancelar ingreso: {str(e)}'
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# 🔹 OBTENER RESERVAS DE EVENTOS PENDIENTES DE CHECK-IN (GET)
+# 🔹 OBTENER RESERVAS DE EVENTOS PENDIENTES DE INGRESO (GET)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def reservas_evento_pendientes_check_in(request):
     """
-    Retorna reservas de eventos activas sin check-in para el día de hoy
+    Retorna reservas de eventos activas sin ingreso para el día de hoy
     Ejemplo: GET /api/eventos/reservas/pendientes-check-in/
     """
     try:
@@ -1407,7 +1407,7 @@ def reservas_evento_pendientes_check_in(request):
             hora_ini_aware = reserva.hora_ini.astimezone(tz_bolivia) if timezone.is_aware(reserva.hora_ini) else tz_bolivia.localize(reserva.hora_ini)
             tiempo_hasta_inicio = (hora_ini_aware - hora_actual).total_seconds() / 3600
             
-            # Verificar si ya puede hacer check-in (2 horas antes)
+            # Verificar si ya puede hacer ingreso (2 horas antes)
             puede_check_in = tiempo_hasta_inicio <= 2
             
             # Contar servicios
@@ -1444,12 +1444,12 @@ def reservas_evento_pendientes_check_in(request):
         }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-# 🔹 OBTENER RESERVAS DE EVENTOS CON CHECK-IN PERO SIN CHECK-OUT (GET)
+# 🔹 OBTENER RESERVAS DE EVENTOS CON INGRESO PERO SIN SALIDA (GET)
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def reservas_evento_pendientes_check_out(request):
     """
-    Retorna reservas de eventos que tienen check-in pero aún no tienen check-out
+    Retorna reservas de eventos que tienen ingreso pero aún no tienen registrada la salida
     Ejemplo: GET /api/eventos/reservas/pendientes-check-out/
     """
     try:
@@ -1512,7 +1512,7 @@ def reservas_evento_pendientes_check_out(request):
 @permission_classes([AllowAny])
 def eventos_finalizados(request):
     """
-    Retorna eventos finalizados (con check-out)
+    Retorna eventos finalizados (con salida registrada)
     Ejemplo: GET /api/reservaEvento/finalizados/
     """
     try:
@@ -1638,7 +1638,7 @@ def obtener_notificaciones_eventos(request):
     
     Retorna:
     - Eventos que comienzan en los próximos 15 minutos
-    - Eventos que ya pasaron su hora de inicio sin check-in
+    - Eventos que ya pasaron su hora de inicio sin ingreso
     """
     try:
         tz_bolivia = pytz.timezone('America/La_Paz')
@@ -1717,8 +1717,8 @@ def obtener_notificaciones_eventos(request):
             notificaciones.append({
                 'tipo': 'RETRASO',
                 'prioridad': 'ALTA',
-                'titulo': '🚨 CLIENTE NO HA REGISTRADO INICIO',
-                'mensaje': f"La reserva debió iniciar hace {minutos_retraso} minutos y el cliente aún no ha hecho check-in",
+                'titulo': '🚨 CLIENTE NO HA REGISTRADO INGRESO',
+                'mensaje': f"La reserva debió iniciar hace {minutos_retraso} minutos y el cliente aún no ha hecho ingreso  ",
                 'reserva_id': evento.id_reservas_evento,
                 'cliente_nombre': f"{cliente.nombre} {cliente.app_paterno}",
                 'cliente_telefono': str(cliente.telefono),
@@ -1756,6 +1756,50 @@ def obtener_notificaciones_eventos(request):
                 'cant_personas': evento.cant_personas,
                 'minutos_restantes': minutos_restantes
             })
+        # ==========================================
+        # 3️⃣ NOTIFICACIONES PRE-FIN (15 minutos antes de acabar)
+        # ==========================================
+        tiempo_fin_max = ahora + timedelta(minutes=15)
+        tiempo_fin_min = ahora + timedelta(minutes=1)  # Ventana de 1 minuto
+        
+        eventos_por_finalizar = ReservasEvento.objects.filter(
+            estado='A',
+            fecha=fecha_hoy,
+            hora_fin__gte=tiempo_fin_min,
+            hora_fin__lte=tiempo_fin_max,
+            check_in__isnull=False,
+            check_out__isnull=True
+        ).select_related('datos_cliente')
+        
+        for evento in eventos_por_finalizar:
+            cliente = evento.datos_cliente
+            
+            # Calcular minutos exactos hasta la finalización
+            hora_fin_aware = evento.hora_fin.astimezone(tz_bolivia) if timezone.is_aware(evento.hora_fin) else tz_bolivia.localize(evento.hora_fin)
+            minutos_restantes = int((hora_fin_aware - ahora).total_seconds() / 60)
+            
+            # Convertir horas a timezone de Bolivia
+            hora_ini_aware = evento.hora_ini.astimezone(tz_bolivia) if timezone.is_aware(evento.hora_ini) else tz_bolivia.localize(evento.hora_ini)
+            hora_ini_str = hora_ini_aware.strftime('%H:%M')
+            hora_fin_str = hora_fin_aware.strftime('%H:%M')
+            
+            notificaciones.append({
+                'tipo': 'PRE_FIN',
+                'prioridad': 'MEDIA',
+                'titulo': '⏰ EVENTO PRÓXIMO A FINALIZAR',
+                'mensaje': f"El evento finaliza en {minutos_restantes} minutos",
+                'reserva_id': evento.id_reservas_evento,
+                'cliente_nombre': f"{cliente.nombre} {cliente.app_paterno}",
+                'cliente_telefono': str(cliente.telefono),
+                'cliente_email': cliente.email,
+                'fecha': str(evento.fecha),
+                'hora_ini': hora_ini_str,
+                'hora_fin': hora_fin_str,
+                'cant_personas': evento.cant_personas,
+                'minutos_restantes': minutos_restantes,
+                'check_in': evento.check_in.strftime('%Y-%m-%d %H:%M:%S'),
+                'timestamp': ahora.isoformat()
+            })
         
         return Response({
             'notificaciones': notificaciones,
@@ -1792,7 +1836,7 @@ def estadisticas_eventos_hoy(request):
         eventos_finalizados = ReservasEvento.objects.filter(fecha=fecha_hoy, estado='F').count()
         eventos_cancelados = ReservasEvento.objects.filter(fecha=fecha_hoy, estado='C').count()
         
-        # Eventos sin check-in que ya deberían haber empezado
+        # Eventos sin ingreso que ya deberían haber empezado
         eventos_sin_checkin = ReservasEvento.objects.filter(
             fecha=fecha_hoy,
             estado='A',
@@ -1800,7 +1844,7 @@ def estadisticas_eventos_hoy(request):
             check_in__isnull=True
         ).count()
         
-        # Eventos en curso (con check-in, sin check-out)
+        # Eventos en curso (con ingreso, sin salida)
         eventos_en_curso = ReservasEvento.objects.filter(
             fecha=fecha_hoy,
             estado='A',
