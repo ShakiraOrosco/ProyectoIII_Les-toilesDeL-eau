@@ -1242,7 +1242,7 @@ def reservas_pendientes_check_in(request):
 def reservas_pendientes_check_out(request):
     """
     Retorna reservas que tienen ingreso pero aún no tienen salida registrada 
-    Ejemplo: GET /api/reservaHotel/reservas/pendientes-check-out/
+    Ejemplo: GET /api/reservaHotel/pendientes-check-out/
     """
     try:
         reservas = ReservaHotel.objects.select_related(
@@ -1268,6 +1268,8 @@ def reservas_pendientes_check_out(request):
                 'cliente': f"{reserva.datos_cliente.nombre} {reserva.datos_cliente.app_paterno}",
                 'cliente_telefono': reserva.datos_cliente.telefono,
                 'habitacion': reserva.habitacion.numero,
+                'fecha_ini': reserva.fecha_ini,  # ✅ AGREGAR ESTA LÍNEA
+                'fecha_fin': reserva.fecha_fin,  # ✅ AGREGAR ESTA LÍNEA
                 'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S'),
                 'fecha_check_out_esperado': reserva.fecha_fin,
                 'cant_personas': reserva.cant_personas,
@@ -1275,6 +1277,7 @@ def reservas_pendientes_check_out(request):
                     'dias': dias_hospedaje,
                     'horas': horas_hospedaje,
                     'texto': f"{dias_hospedaje} días, {horas_hospedaje} horas"
+                
                 },
                 'sobrepaso_fecha': date.today() > reserva.fecha_fin
             })
