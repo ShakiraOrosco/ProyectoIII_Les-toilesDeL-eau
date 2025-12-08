@@ -65,6 +65,7 @@ INSTALLED_APPS = [
     'apps.servicios_evento',
     'apps.tarifa_hotel',
     'apps.habitacion',
+    'apps.auditoria',
 
     #LIBRERIAS INSTALADAS
     'corsheaders',
