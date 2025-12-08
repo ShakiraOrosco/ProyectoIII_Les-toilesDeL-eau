@@ -31,6 +31,8 @@ urlpatterns = [
     path('api/habitaciones/', include('apps.habitacion.urls')),
     # Reservas Evento
     path('api/', include('apps.reservas_evento.urls')),
+    #auditoria
+    path('api/', include('apps.auditoria.urls')),
 ]
 
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

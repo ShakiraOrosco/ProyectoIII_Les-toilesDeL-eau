@@ -8,6 +8,48 @@ from .serializers import UsuarioSerializer
 from django.contrib.auth.models import User
 from apps.empleado.models import Empleado
 from apps.administrador.models import Administrador
+from apps.auditoria.utils import registrar_login
+from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework.test import APIRequestFactory
+
+@api_view(['POST'])
+def usuario_login(request):
+    """Login de usuarios con generación segura de token JWT."""
+
+    # --- Verificación de usuario y empleado ---
+    username = request.data.get('username')
+    password = request.data.get('password')
+
+    try:
+        user = User.objects.get(username=username)
+        usuario = Usuario.objects.get(user=user)
+    except (User.DoesNotExist, Usuario.DoesNotExist):
+        return Response({
+            "mensaje": "Credenciales inválidas"
+        }, status=status.HTTP_401_UNAUTHORIZED)
+
+    if not usuario.estado == 'A':
+        return Response({
+            "mensaje": "Usuario inactivo. Contacte al administrador."
+        }, status=status.HTTP_403_FORBIDDEN)
+    
+    # --- Registrar auditoría ---
+    registrar_login(request, user, usuario)    
+    # --- RECONSTRUIR EL REQUEST PARA JWT  ---
+    factory = APIRequestFactory()
+    jwt_request = factory.post(
+        "/api/token/",
+        {"username": username, "password": password},
+        format='json'
+    )
+
+    # TokenObtainPairView necesita el usuario autenticado dentro del request
+    jwt_request.user = user
+
+    # --- Ejecutar la vista de SimpleJWT ---
+    response = TokenObtainPairView.as_view()(jwt_request)
+
+    return response
 
 # 🔹 Perfil del usuario autenticado
 @api_view(['GET'])
