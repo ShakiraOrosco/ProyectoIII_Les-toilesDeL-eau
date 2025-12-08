@@ -9,7 +9,7 @@ def registrar_login(request, user, usuario=None):
         except Usuario.DoesNotExist:
             usuario = None
 
-    nombre = f"{usuario.nombre} {usuario.apellido_paterno or ''} {usuario.apellido_materno or ''}" if usuario else ""
+    nombre = f"{usuario.nombre} {usuario.app_paterno or ''} {usuario.app_materno or ''}" if usuario else ""
     descripcion = f"El usuario {user.username} ({nombre}) inició sesión en la aplicación."
     
     Auditoria.objects.create(
