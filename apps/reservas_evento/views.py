@@ -1450,7 +1450,7 @@ def reservas_evento_pendientes_check_in(request):
 def reservas_evento_pendientes_check_out(request):
     """
     Retorna reservas de eventos que tienen ingreso pero aún no tienen registrada la salida
-    Ejemplo: GET /api/eventos/reservas/pendientes-check-out/
+    Ejemplo: GET /api/reservaEvento/pendientes-check-out/
     """
     try:
         from django.utils import timezone
@@ -1475,8 +1475,12 @@ def reservas_evento_pendientes_check_out(request):
             hora_fin_aware = reserva.hora_fin if timezone.is_aware(reserva.hora_fin) else timezone.make_aware(reserva.hora_fin)
             sobrepaso_hora = ahora > hora_fin_aware
             
-            # Contar servicios
-            total_servicios = ServiciosEvento.objects.filter(reservas_evento=reserva).count()
+            # Contar servicios y obtener sus nombres
+            servicios = ServiciosEvento.objects.filter(reservas_evento=reserva).select_related('servicios_adicionales')
+            total_servicios = servicios.count()
+            
+            # Obtener nombres de servicios
+            servicios_nombres = [s.servicios_adicionales.nombre for s in servicios if s.servicios_adicionales]
             
             data.append({
                 'id_reservas_evento': reserva.id_reservas_evento,
@@ -1488,6 +1492,7 @@ def reservas_evento_pendientes_check_out(request):
                 'check_in': reserva.check_in.strftime('%Y-%m-%d %H:%M:%S'),
                 'cant_personas': reserva.cant_personas,
                 'total_servicios': total_servicios,
+                'servicios_contratados': servicios_nombres,  # ← AQUÍ SE AGREGA LA LISTA DE NOMBRES
                 'tiempo_transcurrido': {
                     'horas': horas_transcurridas,
                     'minutos': minutos_transcurridos,
