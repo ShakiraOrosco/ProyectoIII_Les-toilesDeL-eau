@@ -44,6 +44,7 @@ from apps.administrador.models import Administrador
 from apps.empleado.models import Empleado
 from apps.tarifa_hotel.models import TarifaHotel
 from .queue_manager import gestor_cola
+from apps.auditoria.views import registrar_creacion_reserva_hotel, registrar_actualizacion_reserva_hotel, registrar_check_in_hotel, registrar_check_out_hotel, registrar_cancelacion_reserva_hotel, registrar_cancelacion_check_in
 
 # 🔹 Registrar una reserva de hotel
 @api_view(['POST'])
@@ -189,6 +190,7 @@ def registrar_reserva_hotel(request):
     resultado = request_reserva.resultado
     
     if resultado['success']:
+        registrar_creacion_reserva_hotel(request, request.user, resultado['reserva'], datos_cliente)
         serializer = ReservaHotelSerializer(resultado['reserva'])
         return Response({
             'mensaje': 'Reserva creada correctamente',
@@ -701,7 +703,8 @@ def actualizar_reserva_hotel(request, id_reserva):
                 }, status=400)
             
             reserva.save()
-            
+            cambios_detalle = {}
+
             # --- 8️⃣ PREPARAR RESPUESTA
             respuesta = {
                 'mensaje': 'Reserva actualizada correctamente',
@@ -736,7 +739,13 @@ def actualizar_reserva_hotel(request, id_reserva):
                     'fecha_fin': str(reserva.fecha_fin),
                     'dias_estadia': (reserva.fecha_fin - reserva.fecha_ini).days
                 }
-            
+            registrar_actualizacion_reserva_hotel(
+                request=request,
+                user=request.user if request.user.is_authenticated else None,
+                reserva=reserva,
+                campos_actualizados=campos_actualizados,
+                cambios_detalle=cambios_detalle
+            )
             return Response(respuesta, status=status.HTTP_200_OK)
         
     except ReservaHotel.DoesNotExist:
@@ -774,6 +783,7 @@ def eliminar_reserva_hotel(request, id_reserva):
         estado_anterior = reserva.estado
         reserva.estado = 'C'
         reserva.save()
+        registrar_cancelacion_reserva_hotel(request, request.user, reserva)
         
         # Liberar la habitación
         #habitacion = reserva.habitacion
@@ -1043,6 +1053,8 @@ def realizar_check_in(request, id_reserva):
             if reserva.habitacion.estado != 'OCUPADA':
                 reserva.habitacion.estado = 'OCUPADA'
                 reserva.habitacion.save()
+
+            registrar_check_in_hotel(request, request.user, reserva)
             
             return Response({
                 'mensaje': 'Ingreso realizado correctamente',
@@ -1111,6 +1123,7 @@ def realizar_check_out(request, id_reserva):
             # Liberar la habitación
             reserva.habitacion.estado = 'DISPONIBLE'
             reserva.habitacion.save()
+            registrar_check_out_hotel(request, request.user, reserva)
             
             # Calcular duración de la estadía
             duracion_estadia = reserva.check_out - reserva.check_in
@@ -1173,6 +1186,7 @@ def cancelar_check_in(request, id_reserva):
             check_in_anterior = reserva.check_in
             reserva.check_in = None
             reserva.save()
+            registrar_cancelacion_check_in(request, request.user, reserva)
             
             return Response({
                 'mensaje': 'ingreso cancelado correctamente',
