@@ -214,14 +214,7 @@ def actualizar_usuario(request, id_usuario):
         usuario.estado = request.data.get('estado', usuario.estado)
         usuario.rol = request.data.get('rol', usuario.rol)
         
-        # Si se proporciona una nueva contraseña, actualizarla
-        nueva_password = request.data.get('password')
-        if nueva_password:
-            usuario.password = nueva_password
-            # Actualizar también en el User de Django si existe
-            if usuario.user:
-                usuario.user.set_password(nueva_password)
-                usuario.user.save()
+        
         
         # Actualizar email en el User de Django si existe
         if usuario.user and usuario.email:
