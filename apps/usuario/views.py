@@ -192,6 +192,17 @@ def lista_usuarios(request):
 def actualizar_usuario(request, id_usuario):
     try:
         usuario = Usuario.objects.get(id_usuario=id_usuario)
+        #guardar datos viejos para auditoría
+        datos_viejos = {
+            'nombre': usuario.nombre,
+            'app_paterno': usuario.app_paterno,
+            'app_materno': usuario.app_materno,
+            'ci': usuario.ci,
+            'telefono': usuario.telefono,
+            'email': usuario.email,
+            'estado': usuario.estado,
+            'rol': usuario.rol
+        }
         
         # Actualizar campos del modelo Usuario
         usuario.nombre = request.data.get('nombre', usuario.nombre)
@@ -218,7 +229,7 @@ def actualizar_usuario(request, id_usuario):
             usuario.user.save()
         
         usuario.save()
-        registrar_actualizacion_usuario(request, request.user, usuario, {}, request.data)
+        registrar_actualizacion_usuario(request, request.user, usuario, datos_viejos, request.data)
         
         return Response(
             {
