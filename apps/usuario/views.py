@@ -8,7 +8,7 @@ from .serializers import UsuarioSerializer
 from django.contrib.auth.models import User
 from apps.empleado.models import Empleado
 from apps.administrador.models import Administrador
-from apps.auditoria.utils import registrar_login
+from apps.auditoria.utils import registrar_login, registrar_creacion_usuario, registrar_actualizacion_usuario
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.test import APIRequestFactory
 
@@ -149,6 +149,9 @@ def crear_usuario(request):
     else:
         extra_data = {"info": "Usuario creado sin rol específico"}
 
+    # Registrar auditoría de creación de usuario
+    registrar_creacion_usuario(request, request.user, usuario)
+
     # Serializar respuesta
     return Response({
         "id_usuario": usuario.id_usuario,
@@ -215,6 +218,7 @@ def actualizar_usuario(request, id_usuario):
             usuario.user.save()
         
         usuario.save()
+        registrar_actualizacion_usuario(request, request.user, usuario, {}, request.data)
         
         return Response(
             {
