@@ -192,7 +192,8 @@ def lista_usuarios(request):
 def actualizar_usuario(request, id_usuario):
     try:
         usuario = Usuario.objects.get(id_usuario=id_usuario)
-        #guardar datos viejos para auditoría
+        
+        # Guardar datos viejos para auditoría
         datos_viejos = {
             'nombre': usuario.nombre,
             'app_paterno': usuario.app_paterno,
@@ -204,25 +205,58 @@ def actualizar_usuario(request, id_usuario):
             'rol': usuario.rol
         }
         
-        # Actualizar campos del modelo Usuario
-        usuario.nombre = request.data.get('nombre', usuario.nombre)
-        usuario.app_paterno = request.data.get('app_paterno', usuario.app_paterno)
-        usuario.app_materno = request.data.get('app_materno', usuario.app_materno)
-        usuario.ci = request.data.get('ci', usuario.ci)
-        usuario.telefono = request.data.get('telefono', usuario.telefono)
-        usuario.email = request.data.get('email', usuario.email)
-        usuario.estado = request.data.get('estado', usuario.estado)
-        usuario.rol = request.data.get('rol', usuario.rol)
+        # Lista de campos que NO deben actualizarse
+        campos_prohibidos = ['id_usuario', 'user', 'password']
         
+        # Actualizar solo los campos permitidos que vienen en el request
+        campos_actualizables = {
+            'nombre': request.data.get('nombre'),
+            'app_paterno': request.data.get('app_paterno'),
+            'app_materno': request.data.get('app_materno'),
+            'ci': request.data.get('ci'),
+            'telefono': request.data.get('telefono'),
+            'email': request.data.get('email'),
+            'estado': request.data.get('estado'),
+            'rol': request.data.get('rol')
+        }
         
+        # Solo actualizar campos que no son None y que están permitidos
+        for campo, valor in campos_actualizables.items():
+            if valor is not None:
+                setattr(usuario, campo, valor)
         
-        # Actualizar email en el User de Django si existe
-        if usuario.user and usuario.email:
-            usuario.user.email = usuario.email
+        # Validar duplicados solo si los campos cambiaron
+        if 'ci' in request.data and request.data['ci'] != datos_viejos['ci']:
+            if Usuario.objects.filter(ci=request.data['ci']).exclude(id_usuario=id_usuario).exists():
+                return Response(
+                    {"error": "El CI ya está registrado en otro usuario"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        if 'telefono' in request.data and request.data['telefono'] != datos_viejos['telefono']:
+            if Usuario.objects.filter(telefono=request.data['telefono']).exclude(id_usuario=id_usuario).exists():
+                return Response(
+                    {"error": "El teléfono ya está registrado en otro usuario"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        if 'email' in request.data and request.data['email'] != datos_viejos['email']:
+            if Usuario.objects.filter(email=request.data['email']).exclude(id_usuario=id_usuario).exists():
+                return Response(
+                    {"error": "El email ya está registrado en otro usuario"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # Actualizar email en el User de Django si existe y cambió
+        if usuario.user and 'email' in request.data:
+            usuario.user.email = request.data['email']
             usuario.user.save()
         
         usuario.save()
-        registrar_actualizacion_usuario(request, request.user, usuario, datos_viejos, request.data)
+        
+        # Registrar auditoría solo con los campos que realmente cambiaron
+        datos_nuevos = {k: v for k, v in request.data.items() if k not in campos_prohibidos}
+        registrar_actualizacion_usuario(request, request.user, usuario, datos_viejos, datos_nuevos)
         
         return Response(
             {
@@ -250,9 +284,8 @@ def actualizar_usuario(request, id_usuario):
     except Exception as e:
         return Response(
             {'error': str(e)},
-            status=status.HTTP_400_BAD_REQUEST  
+            status=status.HTTP_400_BAD_REQUEST
         )
-
 
 #🔹 Eliminar usuario por ID
 @api_view(['DELETE'])
